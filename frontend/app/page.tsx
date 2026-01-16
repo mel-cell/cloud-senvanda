@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Server, Container, Activity, RefreshCw, Box } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -14,6 +15,7 @@ interface DockerInfo {
 }
 
 export default function Home() {
+  const router = useRouter(); // Need to import useRouter
   const [info, setInfo] = useState<DockerInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -22,19 +24,27 @@ export default function Home() {
     setLoading(true);
     setError('');
     try {
-      // Panggil Custom Endpoint yang kita buat di Golang backend
-      // Karena ini custom endpoint, kita pakai pb.send() atau fetch biasa
-      // Tapi client SDK punya helper send() yang otomatis handle auth kalau perlu (nanti)
-      const res = await pb.send('/api/deploy/info', { method: 'POST' });
+      // Panggil Custom Endpoint (Path Baru dengan Auth)
+      const res = await pb.send('/api/senvanda/deploy/info', { method: 'POST' });
       setInfo(res as DockerInfo);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch docker info');
+      // Jika 401/403 (Token Expired), kick ke login
+      if (err.status === 401 || err.status === 403) {
+         pb.authStore.clear();
+         router.push('/login');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    // Auth Guard Sederhana
+    if (!pb.authStore.isValid) {
+        router.push('/login');
+        return;
+    }
     fetchDockerInfo();
   }, []);
 
