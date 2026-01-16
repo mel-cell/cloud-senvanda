@@ -1,0 +1,16 @@
+=============== Jan 16, 2026 (WIB) ===============
+17:38:52.314398 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+17:38:52.318986 db@open opening
+17:38:52.319201 version@stat F·[] S·0B[] Sc·[]
+17:38:52.320810 db@janitor F·2 G·0
+17:38:52.320832 db@open done T·1.829597ms
+=============== Jan 16, 2026 (WIB) ===============
+18:35:48.421562 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+18:35:48.421811 version@stat F·[] S·0B[] Sc·[]
+18:35:48.421829 db@open opening
+18:35:48.421895 journal@recovery F·1
+18:35:48.421995 journal@recovery recovering @1
+18:35:48.430626 memdb@flush created L0@2 N·28 S·574B "act..igh,v28":"web..low,v19"
+18:35:48.430802 version@stat F·[1] S·574B[574B] Sc·[0.25]
+18:35:48.441789 db@janitor F·3 G·0
+18:35:48.441816 db@open done T·19.975822ms

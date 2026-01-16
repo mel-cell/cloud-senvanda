@@ -1,0 +1,95 @@
+version: '3.8'
+
+networks:
+  senvanda-network:
+    external: true
+
+services:
+  # 1. THE GATEWAY (Caddy)
+  # Otomatis mengatur domain & SSL untuk semua layanan
+  caddy:
+    image: lucaslorentz/caddy-docker-proxy:ci-alpine
+    ports:
+      - "9080:80"
+      - "9443:9443" # Explicitly map 9443 to internal 9443
+    environment:
+      - CADDY_INGRESS_NETWORKS=senvanda-network
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock # Wajib agar bisa baca label container lain
+      - ./caddy_data:/data
+    networks:
+      senvanda-network:
+        aliases:
+          - git.senvanda.local
+          - ci.senvanda.local
+          - api.senvanda.local
+    restart: unless-stopped
+
+  # 2. THE BRAIN (PocketBase)
+  # Nanti ini diganti dengan custom Go build kamu. Sekarang pakai default dulu.
+  pocketbase:
+    image: ghcr.io/muchobien/pocketbase:latest
+    command: ["serve", "--http=0.0.0.0:8090"]
+    volumes:
+      - ./pb_data:/pb/pb_data
+    networks:
+      - senvanda-network
+    labels:
+      caddy: api.senvanda.local:9443
+      caddy.reverse_proxy: "{{upstreams 8090}}"
+
+  # 3. THE CODE HOST (Gitea)
+  gitea:
+    image: gitea/gitea:latest
+    environment:
+      - USER_UID=1003
+      - USER_GID=1003
+      - GITEA__server__DOMAIN=git.senvanda.local
+      - GITEA__server__ROOT_URL=https://git.senvanda.local:9443
+      - GITEA__server__SSH_PORT=2222 # Kita geser port SSH git biar ga bentrok sama server
+    volumes:
+      - ./gitea_data:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - "2222:22" # SSH Git lewat port 2222
+    networks:
+      - senvanda-network
+    labels:
+      caddy: git.senvanda.local:9443
+      caddy.reverse_proxy: "{{upstreams 3000}}"
+
+  # 4. THE BUILDER (Woodpecker CI Server)
+  woodpecker-server:
+    image: woodpeckerci/woodpecker-server:latest
+    environment:
+      - WOODPECKER_OPEN=true
+      - WOODPECKER_HOST=https://ci.senvanda.local:9443
+      - WOODPECKER_GITEA=true
+      - WOODPECKER_GITEA_URL=https://git.senvanda.local:9443
+      # Nanti kamu perlu isi Client ID/Secret dari Gitea setelah Gitea jalan
+      - WOODPECKER_GITEA_CLIENT=e9f429e4-12f2-4818-aed4-1015947e5025
+      - WOODPECKER_GITEA_SECRET=gto_wkv432dv7vayghwk7d4dzq3hhfjawqhdvxogl3wwuca5cjxfvikq
+      - WOODPECKER_AGENT_SECRET=rahasia_dapur_senvanda
+      - WOODPECKER_GITEA_SKIP_VERIFY=true
+    volumes:
+      - ./woodpecker_data:/var/lib/woodpecker/
+    networks:
+      - senvanda-network
+    labels:
+      caddy: ci.senvanda.local:9443
+      caddy.reverse_proxy: "{{upstreams 8000}}"
+
+  # 5. THE WORKER (Woodpecker Agent)
+  woodpecker-agent:
+    image: woodpeckerci/woodpecker-agent:latest
+    command: agent
+    restart: always
+    environment:
+      - WOODPECKER_SERVER=woodpecker-server:9000
+      - WOODPECKER_AGENT_SECRET=rahasia_dapur_senvanda
+      - DOCKER_API_VERSION=1.44
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock # Agar bisa spawn container build
+    networks:
+      - senvanda-network
