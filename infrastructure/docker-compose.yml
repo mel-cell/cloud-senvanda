@@ -25,13 +25,17 @@ services:
           - api.senvanda.local
     restart: unless-stopped
 
-  # 2. THE BRAIN (PocketBase)
-  # Nanti ini diganti dengan custom Go build kamu. Sekarang pakai default dulu.
+  # 2. THE BRAIN (PocketBase - Custom)
   pocketbase:
-    image: ghcr.io/muchobien/pocketbase:latest
-    command: ["serve", "--http=0.0.0.0:8090"]
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    # command line removed, using Dockerfile default
     volumes:
       - ./pb_data:/pb/pb_data
+      - /var/run/docker.sock:/var/run/docker.sock # PENTING: Biar PocketBase bisa akses Docker Host
+    ports:
+      - "8090:8090"
     networks:
       - senvanda-network
     labels:
