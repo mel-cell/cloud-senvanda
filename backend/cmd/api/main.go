@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/labstack/echo/v5"
 	"github.com/pocketbase/pocketbase"
@@ -12,6 +13,8 @@ import (
 	"github.com/pocketbase/pocketbase/models/schema"
 	"github.com/senvanda/backend/internal/infrastructure/caddy"
 	"github.com/senvanda/backend/internal/infrastructure/docker"
+	"github.com/senvanda/backend/internal/infrastructure/woodpecker"
+	"github.com/senvanda/backend/internal/orchestrator"
 	"github.com/senvanda/backend/internal/webhook"
 )
 
@@ -19,25 +22,45 @@ func main() {
 	app := pocketbase.New()
 
 	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
-		// 0. Ensure 'projects' Collection Exists (Auto-Migration)
+		// 0. Ensure 'projects' Collection Exists & Has Correct Schema
 		col, err := app.Dao().FindCollectionByNameOrId("projects")
 		if err != nil {
-			log.Println("⚡ Creating 'projects' collection...")
+			log.Println("⚠️ Collection 'projects' not found, creating...")
 			col = &models.Collection{}
 			col.Name = "projects"
 			col.Type = models.CollectionTypeBase
-			col.Schema = schema.NewSchema(
-				&schema.SchemaField{Name: "name", Type: schema.FieldTypeText, Required: true},
-				// Note: Gunakan ID record sebagai webhook token agar unik
-			)
 		}
 
-		// ... (Rules update skipped for brevity in diff, assume unchanged)
-		col.ListRule = nil
-		col.ViewRule = nil
-		col.CreateRule = nil
-		col.UpdateRule = nil
-		col.DeleteRule = nil
+		// Sync Schema Fields
+		requiredFields := []schema.SchemaField{
+			{Name: "name", Type: schema.FieldTypeText, Required: true},
+			{Name: "status", Type: schema.FieldTypeText},
+			{Name: "webhook_token", Type: schema.FieldTypeText},
+			{Name: "repo_owner", Type: schema.FieldTypeText},
+			{Name: "repo_name", Type: schema.FieldTypeText},
+			{Name: "internal_ip", Type: schema.FieldTypeText},
+			{Name: "last_build_num", Type: schema.FieldTypeNumber},
+			{Name: "error_log", Type: schema.FieldTypeText},
+		}
+
+		for _, f := range requiredFields {
+			if col.Schema.GetFieldByName(f.Name) == nil {
+				col.Schema.AddField(&f)
+			}
+		}
+
+		// PERMISSIVE RULES FOR TESTING
+		rule := ""
+		col.ListRule = &rule
+		col.ViewRule = &rule
+		col.CreateRule = &rule
+		col.UpdateRule = &rule
+
+		if err := app.Dao().SaveCollection(col); err != nil {
+			log.Printf("❌ Failed to save collection: %v", err)
+			return err
+		}
+
 
 		if err := app.Dao().SaveCollection(col); err != nil {
 			return err
@@ -68,9 +91,21 @@ func main() {
 
 		caddyClient := caddy.NewClient("http://caddy:2019")
 
+		// Woodpecker Client (The Worker)
+		// We use internal communication if possible, or domain via Caddy
+		// Internal: http://woodpecker-server:8000
+		ciToken := os.Getenv("WOODPECKER_API_TOKEN")
+		// Use the port we exposed internally or the service name. Ideally service name.
+		// Since we are in the same network, http://woodpecker-server:8000 is reachable if expose setting allows
+		// or if we use the internal port.
+		// NOTE: In docker-compose, woodpecker-server listens on 8000 internally.
+		ciURL := "http://woodpecker-server:8000"
+		woodpeckerClient := woodpecker.NewClient(ciURL, ciToken)
+
 		// 2. Inisialisasi Logic Layer (The Brain)
+		orchestratorSvc := orchestrator.NewService(app, dockerClient, caddyClient, woodpeckerClient)
 		webhookSvc := webhook.NewService(app)
-		webhookHandler := webhook.NewHandler(webhookSvc)
+		webhookHandler := webhook.NewHandler(webhookSvc, orchestratorSvc)
 
 		// 3. Register Routes
 		// Group API Public (Tanpa Auth user session, karena Gitea yang call)

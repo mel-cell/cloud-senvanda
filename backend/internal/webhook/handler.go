@@ -5,14 +5,19 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v5"
+	"github.com/senvanda/backend/internal/orchestrator"
 )
 
 type Handler struct {
-	service *Service
+	service      *Service
+	orchestrator *orchestrator.Service
 }
 
-func NewHandler(service *Service) *Handler {
-	return &Handler{service: service}
+func NewHandler(service *Service, orchestrator *orchestrator.Service) *Handler {
+	return &Handler{
+		service:      service,
+		orchestrator: orchestrator,
+	}
 }
 
 // HandleGiteaPush receives POST requests from Gitea
@@ -35,21 +40,28 @@ func (h *Handler) HandleGiteaPush(c echo.Context) error {
 	project, err := h.service.ValidateTrigger(token, payload)
 	if err != nil {
 		log.Printf("⛔ Webhook Rejected: %v", err)
-		// Return 200 OK to Gitea even if rejected logic-wise to stop it from retrying,
-		// but with a descriptive message. Or 403 if we want to be strict.
-		// Let's go strict for now to catch config errors.
 		return c.JSON(http.StatusForbidden, map[string]string{"error": err.Error()})
 	}
 
 	log.Printf("✅ Webhook Accepted for Project: %s (ID: %s)", project.GetString("name"), project.Id)
 
-	// TODO: Phase 4 - Trigger Deployment Pipeline
-	// deploymentService.Trigger(project, payload.After)
+	// 3. Trigger Async CI/CD Pipeline
+	go func() {
+		log.Printf("⏳ Triggering CI Build for %s", project.GetString("name"))
+		// We use the branch from the payload, e.g. "refs/heads/main" -> "main"
+		// A simple split or using the full ref if Woodpecker supports it.
+		// Woodpecker usually expects just the branch name "main".
+		branch := "main" // Simplified for now, or parse payload.Ref
 
-	return c.JSON(http.StatusOK, map[string]string{
+		if err := h.orchestrator.TriggerBuildPipeline(project, branch); err != nil {
+			log.Printf("❌ Build Trigger failed: %v", err)
+		}
+	}()
+
+	return c.JSON(http.StatusAccepted, map[string]string{
 		"status":     "accepted",
 		"project_id": project.Id,
-		"message":    "Deployment queued (Coming Soon)",
+		"message":    "CI Build triggered. Monitor Woodpecker for progress.",
 	})
 }
 

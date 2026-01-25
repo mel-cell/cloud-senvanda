@@ -5,8 +5,7 @@
 *.local
 
 # Infrastructure (Protect persistent data from Git)
-infrastructure/*
-infrastructure/
+/infrastructure/
 !infrastructure/docker-compose.yml
 
 # Backend (PocketBase & Go)
