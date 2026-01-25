@@ -1,0 +1,28 @@
+FROM golang:1.24-alpine
+
+WORKDIR /app
+
+# Install basic tools and Air for hot reload
+# Using a specific older version of Air that supports Go 1.24 or just go install without version constraint if compatible,
+# but the error said Air required Go 1.25. Let's try @v1.61.0 which should be safer or just latest but we need to upgrade base image if possible.
+# Wait, Go 1.24 is very new? actually likely user has older Go but image is 1.24.
+# The error "requires go >= 1.25" suggests we are using a very bleeding edge Air or the base image is slightly behind what Air expects.
+# Let's downgrade Air slightly to be safe.
+
+RUN apk add --no-cache git curl && \
+    go install github.com/air-verse/air@v1.52.3
+
+# Copy go mod and sum files
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy the source code
+COPY . .
+
+# Expose the PocketBase port
+EXPOSE 8090
+
+# User air for hot reload
+CMD ["air", "-c", ".air.toml"]
