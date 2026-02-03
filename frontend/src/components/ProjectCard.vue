@@ -23,9 +23,18 @@ const navigateToDetail = () => {
 // 'building': Soft Blue/Pink
 const cardTheme = computed(() => {
   switch (props.project.status) {
+    case "building":
+    case "deploying":
+      return {
+        bg: "bg-[#FFF7D1]", // Soft Yellow
+        text: "text-yellow-900",
+        accent: "bg-yellow-200",
+        icon: "text-yellow-600",
+      };
+    case "online":
     case "running":
       return {
-        bg: "bg-[#F2E8FF]", // Light Purple (Active)
+        bg: "bg-[#F2E8FF]", // Light Purple
         text: "text-purple-900",
         accent: "bg-purple-200",
         icon: "text-purple-600",
@@ -37,19 +46,19 @@ const cardTheme = computed(() => {
         accent: "bg-gray-200",
         icon: "text-gray-500",
       };
-    case "building":
-      return {
-        bg: "bg-[#FFF7D1]", // Soft Yellow
-        text: "text-yellow-900",
-        accent: "bg-yellow-200",
-        icon: "text-yellow-600",
-      };
     case "draft":
       return {
         bg: "bg-gray-50", // Very light gray (draft)
         text: "text-gray-500",
         accent: "bg-gray-200",
         icon: "text-gray-400",
+      };
+    case "failed":
+      return {
+        bg: "bg-red-50",
+        text: "text-red-900",
+        accent: "bg-red-200",
+        icon: "text-red-600",
       };
     default:
       return {
@@ -80,11 +89,13 @@ const cardTheme = computed(() => {
           <span
             class="w-2 h-2 rounded-full"
             :class="
-              project.status === 'running'
+              ['running', 'online'].includes(project.status)
                 ? 'bg-green-500 animate-pulse'
                 : project.status === 'draft'
                   ? 'bg-gray-400'
-                  : 'bg-red-400'
+                  : ['building', 'deploying'].includes(project.status)
+                    ? 'bg-yellow-400 animate-pulse'
+                    : 'bg-red-400'
             "
           ></span>
           <p class="text-[10px] font-bold uppercase tracking-widest opacity-60">

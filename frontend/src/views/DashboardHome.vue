@@ -90,12 +90,19 @@ const stats = computed(() => {
 
 const isPruning = ref(false);
 const handlePrune = async () => {
-  if (!confirm("Hapus semua record project yang tidak ada kontainernya? (Termasuk record 'Untitled')")) return;
-  
+  if (
+    !confirm(
+      "Hapus semua record project yang tidak ada kontainernya? (Termasuk record 'Untitled')",
+    )
+  )
+    return;
+
   isPruning.value = true;
   try {
     const res = await pb.send("/api/senvanda/deploy/prune", { method: "POST" });
-    alert(`DevOps Hygiene: Berhasil membersihkan ${res.pruned_count} project hantu/untitled!`);
+    alert(
+      `DevOps Hygiene: Berhasil membersihkan ${res.pruned_count} project hantu/untitled!`,
+    );
     await loadProjects();
   } catch (err) {
     alert("Gagal pruning: " + err.message);
@@ -117,8 +124,45 @@ const navigateToAdopt = async (container) => {
   }
 };
 
+const subscribeProjects = async () => {
+  // Subscribe to real-time changes
+  pb.collection("projects").subscribe("*", (e) => {
+    console.log(
+      "🔔 Real-time update:",
+      e.action,
+      e.record.name,
+      e.record.status,
+    );
+
+    if (e.action === "update") {
+      const index = projects.value.findIndex((p) => p.id === e.record.id);
+      if (index !== -1) {
+        // Sync the DB status back to our local model
+        // We keep the other calculated fields (like State) unless we want to refetch
+        projects.value[index] = {
+          ...projects.value[index],
+          status: e.record.status,
+          db_status: e.record.status,
+          internal_ip: e.record.internal_ip,
+          url: e.record.url,
+        };
+      }
+    } else if (e.action === "create") {
+      loadProjects(); // Easier to just reload all on create to get calculated fields
+    } else if (e.action === "delete") {
+      projects.value = projects.value.filter((p) => p.id !== e.record.id);
+    }
+  });
+};
+
 onMounted(() => {
   loadProjects();
+  subscribeProjects();
+});
+
+import { onUnmounted } from "vue";
+onUnmounted(() => {
+  pb.collection("projects").unsubscribe("*");
 });
 </script>
 
@@ -213,8 +257,11 @@ onMounted(() => {
             title="Clean up Missing/Untitled records"
           >
             <Trash2 class="w-3 h-3" v-if="!isPruning" />
-            <span class="animate-spin h-3 w-3 border-2 border-red-600 border-t-transparent rounded-full" v-else></span>
-            {{ isPruning ? 'Cleaning...' : 'Prune Missing' }}
+            <span
+              class="animate-spin h-3 w-3 border-2 border-red-600 border-t-transparent rounded-full"
+              v-else
+            ></span>
+            {{ isPruning ? "Cleaning..." : "Prune Missing" }}
           </button>
         </div>
 
@@ -290,18 +337,26 @@ onMounted(() => {
       </div>
 
       <!-- DISCOVERY SECTION (LEGACY CONTAINERS) -->
-      <div v-if="legacyApps.length > 0" class="mt-12 animate-in slide-in-from-bottom duration-1000">
+      <div
+        v-if="legacyApps.length > 0"
+        class="mt-12 animate-in slide-in-from-bottom duration-1000"
+      >
         <div class="flex items-center gap-3 mb-6">
           <div class="w-1.5 h-6 bg-blue-500 rounded-full"></div>
           <h2 class="text-xl font-bold text-gray-800">Discovered on Server</h2>
-          <span class="px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 text-[10px] font-bold uppercase tracking-wider">Unmanaged</span>
+          <span
+            class="px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 text-[10px] font-bold uppercase tracking-wider"
+            >Unmanaged</span
+          >
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-20">
-          <LegacyContainerCard 
-            v-for="c in legacyApps" 
-            :key="c.id" 
-            :container="c" 
+        <div
+          class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-20"
+        >
+          <LegacyContainerCard
+            v-for="c in legacyApps"
+            :key="c.id"
+            :container="c"
             @adopt="navigateToAdopt"
           />
         </div>

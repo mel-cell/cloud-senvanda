@@ -9,7 +9,7 @@ WORKDIR /app
 # The error "requires go >= 1.25" suggests we are using a very bleeding edge Air or the base image is slightly behind what Air expects.
 # Let's downgrade Air slightly to be safe.
 
-RUN apk add --no-cache git curl && \
+RUN apk add --no-cache git curl docker-cli && \
     go install github.com/air-verse/air@v1.52.3
 
 # Copy go mod and sum files

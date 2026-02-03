@@ -3,6 +3,9 @@ package webhook
 import (
 	"log"
 	"net/http"
+	"strings"
+
+	"strings"
 
 	"github.com/labstack/echo/v5"
 	"github.com/senvanda/backend/internal/orchestrator"
@@ -48,10 +51,14 @@ func (h *Handler) HandleGiteaPush(c echo.Context) error {
 	// 3. Trigger Async CI/CD Pipeline
 	go func() {
 		log.Printf("⏳ Triggering CI Build for %s", project.GetString("name"))
-		// We use the branch from the payload, e.g. "refs/heads/main" -> "main"
-		// A simple split or using the full ref if Woodpecker supports it.
-		// Woodpecker usually expects just the branch name "main".
-		branch := "main" // Simplified for now, or parse payload.Ref
+		// Parse branch from Ref (e.g. "refs/heads/main" -> "main")
+		branch := "main"
+		if payload.Ref != "" {
+			parts := strings.Split(payload.Ref, "/")
+			if len(parts) >= 3 {
+				branch = parts[len(parts)-1]
+			}
+		}
 
 		if err := h.orchestrator.TriggerBuildPipeline(project, branch); err != nil {
 			log.Printf("❌ Build Trigger failed: %v", err)

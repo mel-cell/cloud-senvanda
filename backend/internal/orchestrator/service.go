@@ -103,7 +103,50 @@ func (s *Service) DeployUserApp(project *models.Record, imageTag string) error {
 
 	// C. Run New Container
 	log.Printf("▶️ Starting new container...")
-	containerIP, err := s.dockerClient.RunContainer(ctx, containerName, imageTag, networkName)
+
+	// Extract Volumes from DB
+	var binds []string
+	if volumesData := project.Get("volumes"); volumesData != nil {
+		if volList, ok := volumesData.([]interface{}); ok {
+			for _, v := range volList {
+				if vm, ok := v.(map[string]interface{}); ok {
+					host := fmt.Sprintf("%v", vm["host"])
+					container := fmt.Sprintf("%v", vm["container"])
+					if host != "" && container != "" {
+						binds = append(binds, fmt.Sprintf("%s:%s", host, container))
+					}
+				} else if vs, ok := v.(string); ok {
+					binds = append(binds, vs)
+				}
+			}
+		}
+	}
+
+	// Extract Resources from Settings
+	var cpu float64 = 0.5  // Default
+	var memory int64 = 512 // Default (MB)
+
+	if settingsData := project.Get("settings"); settingsData != nil {
+		if settings, ok := settingsData.(map[string]interface{}); ok {
+			if resources, ok := settings["resources"].(map[string]interface{}); ok {
+				// Parse CPU
+				if cpuVal, ok := resources["cpu"].(string); ok {
+					fmt.Sscanf(cpuVal, "%f", &cpu)
+				} else if cpuVal, ok := resources["cpu"].(float64); ok {
+					cpu = cpuVal
+				}
+
+				// Parse Memory (expecting "512MB" or 512)
+				if memVal, ok := resources["memory"].(string); ok {
+					fmt.Sscanf(memVal, "%d", &memory)
+				} else if memVal, ok := resources["memory"].(float64); ok {
+					memory = int64(memVal)
+				}
+			}
+		}
+	}
+
+	containerIP, err := s.dockerClient.RunContainer(ctx, containerName, imageTag, networkName, binds, cpu, memory)
 	if err != nil {
 		s.markFailed(project, fmt.Sprintf("Failed to start container: %v", err))
 		return err
@@ -111,8 +154,12 @@ func (s *Service) DeployUserApp(project *models.Record, imageTag string) error {
 	log.Printf("✅ Container started at %s", containerIP)
 
 	// Phase 3: Caddy Action
-	// Assume user app runs on port 80 inside the container
-	target := fmt.Sprintf("%s:80", containerIP)
+	// Retrieve port from DB, default to 80
+	appPort := project.GetInt("port")
+	if appPort == 0 {
+		appPort = 80
+	}
+	target := fmt.Sprintf("%s:%d", containerIP, appPort)
 
 	log.Printf("📡 Configuring Caddy route for %s -> %s", domain, target)
 	if err := s.caddyClient.AddLinkDomain(domain, target); err != nil {

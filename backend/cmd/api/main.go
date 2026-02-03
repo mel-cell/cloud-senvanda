@@ -11,6 +11,10 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/models"
 	"github.com/pocketbase/pocketbase/models/schema"
+	"github.com/senvanda/backend/internal/cicd"
+	"github.com/senvanda/backend/internal/container"
+	"github.com/senvanda/backend/internal/deployment"
+	"github.com/senvanda/backend/internal/git"
 	"github.com/senvanda/backend/internal/infrastructure/caddy"
 	"github.com/senvanda/backend/internal/infrastructure/docker"
 	"github.com/senvanda/backend/internal/infrastructure/woodpecker"
@@ -40,7 +44,10 @@ func main() {
 			{Name: "repo_name", Type: schema.FieldTypeText},
 			{Name: "internal_ip", Type: schema.FieldTypeText},
 			{Name: "last_build_num", Type: schema.FieldTypeNumber},
+			{Name: "port", Type: schema.FieldTypeNumber},
 			{Name: "error_log", Type: schema.FieldTypeText},
+			{Name: "volumes", Type: schema.FieldTypeJson},
+			{Name: "settings", Type: schema.FieldTypeJson},
 		}
 
 		for _, f := range requiredFields {
@@ -60,7 +67,6 @@ func main() {
 			log.Printf("❌ Failed to save collection: %v", err)
 			return err
 		}
-
 
 		if err := app.Dao().SaveCollection(col); err != nil {
 			return err
@@ -104,15 +110,30 @@ func main() {
 
 		// 2. Inisialisasi Logic Layer (The Brain)
 		orchestratorSvc := orchestrator.NewService(app, dockerClient, caddyClient, woodpeckerClient)
+		deployHandler := orchestrator.NewDeploymentHandler(orchestratorSvc)
+
 		webhookSvc := webhook.NewService(app)
 		webhookHandler := webhook.NewHandler(webhookSvc, orchestratorSvc)
 
+		// Legacy/Dashboard Support
+		containerSvc := container.NewService(dockerClient.GetRawClient())
+		gitSvc := git.NewService()
+		cicdSvc := cicd.NewService()
+		deploymentSvc := deployment.NewService(app, containerSvc, gitSvc, cicdSvc)
+		deploymentHandler := deployment.NewHandler(deploymentSvc)
+
 		// 3. Register Routes
-		// Group API Public (Tanpa Auth user session, karena Gitea yang call)
+		// Group API Public
 		apiGroup := e.Router.Group("/api/senvanda")
 
-		// Register Webhook: POST /api/senvanda/webhook/:token
+		// Register Webhook (from Gitea)
 		webhookHandler.RegisterRoutes(apiGroup)
+
+		// Register Deploy Final (from Woodpecker)
+		deployHandler.RegisterRoutes(apiGroup)
+
+		// Register Dashboard Routes
+		deploymentHandler.RegisterRoutes(apiGroup)
 
 		// Test Endpoint (Bukti Kehidupan)
 		// Bisa diakses via: GET http://localhost:8090/api/senvanda/health-check

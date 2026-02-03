@@ -27,6 +27,10 @@ func NewClient() (*Client, error) {
 	return &Client{cli: cli}, nil
 }
 
+func (c *Client) GetRawClient() *client.Client {
+	return c.cli
+}
+
 // Ping checks connectivity to the Docker Daemon
 func (c *Client) Ping(ctx context.Context) (types.Ping, error) {
 	return c.cli.Ping(ctx)
@@ -68,14 +72,26 @@ func (c *Client) RemoveContainer(ctx context.Context, containerName string) erro
 
 // RunContainer creates and starts a new container attached to a specific network
 // Returns the internal IP address of the container
-func (c *Client) RunContainer(ctx context.Context, containerName string, image string, networkName string) (string, error) {
+func (c *Client) RunContainer(ctx context.Context, containerName string, image string, networkName string, binds []string, cpu float64, memory int64) (string, error) {
 	// 1. Create Container
+	hostConfig := &container.HostConfig{
+		Binds: binds,
+	}
+
+	// Apply Resource Limits (Stability Pillar)
+	if cpu > 0 {
+		hostConfig.Resources.NanoCPUs = int64(cpu * 1e9)
+	}
+	if memory > 0 {
+		hostConfig.Resources.Memory = memory * 1024 * 1024 // Convert MB to Bytes
+	}
+
 	resp, err := c.cli.ContainerCreate(ctx,
 		&container.Config{
 			Image:    image,
 			Hostname: containerName,
 		},
-		nil, // No specific HostConfig for now (unless resource limits needed)
+		hostConfig,
 		&network.NetworkingConfig{
 			EndpointsConfig: map[string]*network.EndpointSettings{
 				networkName: {},

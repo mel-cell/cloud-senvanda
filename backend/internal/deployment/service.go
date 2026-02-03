@@ -231,16 +231,40 @@ func (s *service) ActionProject(ctx context.Context, projectID string, action st
 			}
 		}
 
+		// Extract Volumes from DB
+		var binds []string
+		if volumesData := record.Get("volumes"); volumesData != nil {
+			if volList, ok := volumesData.([]interface{}); ok {
+				for _, v := range volList {
+					if vm, ok := v.(map[string]interface{}); ok {
+						host := fmt.Sprintf("%v", vm["host"])
+						container := fmt.Sprintf("%v", vm["container"])
+						if host != "" && container != "" {
+							binds = append(binds, fmt.Sprintf("%s:%s", host, container))
+						}
+					} else if vs, ok := v.(string); ok {
+						binds = append(binds, vs)
+					}
+				}
+			}
+		}
+
+		// Port Logic: Ensure we have a valid port
+		if port == 0 {
+			port = 80 // Default internal port
+		}
+
 		containerCfg := &container.Config{
-			Name:  containerName,
-			Image: image,
-			Env:   envs,
-			Ports: map[string]string{"80/tcp": strconv.Itoa(port)},
+			Name:    containerName,
+			Image:   image,
+			Env:     envs,
+			Volumes: binds,
+			Ports:   map[string]string{fmt.Sprintf("%d/tcp", port): strconv.Itoa(port)},
 			Labels: map[string]string{
 				"senvanda.project":    name,
 				"senvanda.redeployed": time.Now().Format(time.RFC3339),
 				"caddy":               domain,
-				"caddy.reverse_proxy": "{{upstreams 80}}",
+				"caddy.reverse_proxy": fmt.Sprintf("{{upstreams %d}}", port),
 			},
 		}
 		containerCfg.Resources.CPU = cpu

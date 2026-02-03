@@ -45,6 +45,7 @@ type Config struct {
 	Image     string
 	Ports     map[string]string // "80/tcp": "10001"
 	Env       []string
+	Volumes   []string
 	Labels    map[string]string
 	Resources struct {
 		CPU    string
@@ -125,6 +126,7 @@ func (s *service) CreateContainer(ctx context.Context, cfg *Config) (string, err
 		Labels: cfg.Labels,
 	}, &container.HostConfig{
 		PortBindings:  portBindings,
+		Binds:         cfg.Volumes,
 		RestartPolicy: container.RestartPolicy{Name: "unless-stopped"},
 		Resources: container.Resources{
 			Memory:   memoryLimit,

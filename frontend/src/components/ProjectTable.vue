@@ -120,20 +120,28 @@ const emit = defineEmits(["action"]);
             <td class="px-6 py-4 font-mono text-gray-600">{{ p.port }}</td>
             <td class="px-6 py-4 text-center">
               <div
-                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border"
+                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all"
                 :class="
-                  p.status === 'running'
+                  ['running', 'online'].includes(p.status)
                     ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                    : 'bg-rose-50 text-rose-700 border-rose-100'
+                    : ['building', 'deploying'].includes(p.status)
+                      ? 'bg-yellow-50 text-yellow-700 border-yellow-100'
+                      : 'bg-rose-50 text-rose-700 border-rose-100'
                 "
               >
                 <span
                   class="w-1.5 h-1.5 rounded-full"
                   :class="
-                    p.status === 'running' ? 'bg-emerald-500' : 'bg-rose-500'
+                    ['running', 'online'].includes(p.status) 
+                      ? 'bg-emerald-500 animate-pulse' 
+                      : ['building', 'deploying'].includes(p.status)
+                        ? 'bg-yellow-500 animate-pulse'
+                        : 'bg-rose-500'
                   "
                 ></span>
-                {{ p.status === "running" ? "Active" : "Stopped" }}
+                {{ ['running', 'online'].includes(p.status) ? "Active" : 
+                   ['building', 'deploying'].includes(p.status) ? "Processing" : 
+                   p.status.charAt(0).toUpperCase() + p.status.slice(1) }}
               </div>
             </td>
             <td class="px-6 py-4 text-right">
