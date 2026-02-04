@@ -32,11 +32,18 @@ func (s *Service) ValidateTrigger(token string, payload GiteaPushPayload) (*mode
 	}
 
 	// 2. Validate Branch (Defense Mechanism)
-	// Only deploy if the push is to the 'main' or 'master' branch.
-	// In the future, this can be configurable per project.
+	allowedBranch := "main" // fallback
+	if settingsData := project.Get("settings"); settingsData != nil {
+		if settings, ok := settingsData.(map[string]interface{}); ok {
+			if b, ok := settings["branch"].(string); ok && b != "" {
+				allowedBranch = b
+			}
+		}
+	}
+
 	targetBranch := strings.TrimPrefix(payload.Ref, "refs/heads/")
-	if targetBranch != "main" && targetBranch != "master" {
-		return nil, errors.New("ignoring push: not to main/master branch")
+	if targetBranch != allowedBranch {
+		return nil, errors.New("ignoring push: not to the configured branch (" + allowedBranch + ")")
 	}
 
 	return project, nil

@@ -35,7 +35,7 @@ const form = ref({
   branch: "main",
   port: 3000,
   startCommand: "",
-  envVars: []
+  envVars: [],
 });
 
 // Status Helpers
@@ -133,9 +133,9 @@ const loadProject = async (silent = false) => {
           ? JSON.parse(JSON.stringify(settings.envVars))
           : [];
       }
-      
+
       // If we are on logs tab, load logs too
-      if (activeTab.value === 'logs') {
+      if (activeTab.value === "logs") {
         loadLogs();
       }
     } else {
@@ -267,13 +267,25 @@ const deleteProject = async () => {
   }
 };
 
-import { watch } from "vue";
+import { watch, onUnmounted } from "vue";
 watch(activeTab, (newTab) => {
   if (newTab === "logs") loadLogs();
 });
 
 onMounted(() => {
   loadProject();
+
+  // Real-time Status Subscription (Stability & Premium UX)
+  pb.collection("projects").subscribe(route.params.id, (e) => {
+    if (e.action === "update") {
+      console.log("🔔 Project Update Received:", e.record.status);
+      project.value = { ...project.value, ...e.record };
+    }
+  });
+});
+
+onUnmounted(() => {
+  pb.collection("projects").unsubscribe(route.params.id);
 });
 </script>
 
@@ -635,19 +647,34 @@ onMounted(() => {
         >
           <div class="flex justify-between items-center">
             <h3 class="font-bold text-gray-800 flex items-center gap-2">
-               <Terminal class="w-4 h-4" /> Live Output
+              <Terminal class="w-4 h-4" /> Live Output
             </h3>
-            <Button size="sm" variant="outline" class="h-8 rounded-xl gap-2" @click="loadLogs" :disabled="logsLoading">
-               <RefreshCw class="w-3 h-3" :class="{'animate-spin': logsLoading}" /> Refresh Logs
+            <Button
+              size="sm"
+              variant="outline"
+              class="h-8 rounded-xl gap-2"
+              @click="loadLogs"
+              :disabled="logsLoading"
+            >
+              <RefreshCw
+                class="w-3 h-3"
+                :class="{ 'animate-spin': logsLoading }"
+              />
+              Refresh Logs
             </Button>
           </div>
-          <div class="bg-black text-emerald-500 p-6 rounded-[2rem] font-mono text-xs h-[550px] overflow-y-auto shadow-2xl border border-gray-800 selection:bg-emerald-500/30">
-            <div v-if="logsLoading && !logs" class="flex items-center gap-2 opacity-50">
-               <Loader2 class="w-3 h-3 animate-spin" /> Fetching stream...
+          <div
+            class="bg-black text-emerald-500 p-6 rounded-[2rem] font-mono text-xs h-[550px] overflow-y-auto shadow-2xl border border-gray-800 selection:bg-emerald-500/30"
+          >
+            <div
+              v-if="logsLoading && !logs"
+              class="flex items-center gap-2 opacity-50"
+            >
+              <Loader2 class="w-3 h-3 animate-spin" /> Fetching stream...
             </div>
             <pre class="whitespace-pre-wrap">{{ logs }}</pre>
             <div v-if="!logsLoading && !logs" class="text-gray-500 italic">
-               No log output detected from container.
+              No log output detected from container.
             </div>
           </div>
         </div>
@@ -656,43 +683,76 @@ onMounted(() => {
           v-show="activeTab === 'automation'"
           class="space-y-6 animate-in slide-in-from-right-2 duration-300"
         >
-          <div class="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm max-w-3xl">
+          <div
+            class="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm max-w-3xl"
+          >
             <div class="flex items-center gap-3 mb-6">
-              <div class="w-12 h-12 rounded-2xl bg-orange-50 flex items-center justify-center text-orange-600">
+              <div
+                class="w-12 h-12 rounded-2xl bg-orange-50 flex items-center justify-center text-orange-600"
+              >
                 <Zap class="w-6 h-6" />
               </div>
               <div>
                 <h2 class="text-xl font-bold">CI/CD Automation</h2>
-                <p class="text-sm text-gray-500">Trigger deployments automatically via webhooks.</p>
+                <p class="text-sm text-gray-500">
+                  Trigger deployments automatically via webhooks.
+                </p>
               </div>
             </div>
 
             <div class="space-y-6">
               <div class="p-6 bg-gray-50 rounded-2xl border border-gray-100">
-                <label class="text-[10px] font-bold uppercase tracking-widest text-gray-400 block mb-2">Webhook URL</label>
+                <label
+                  class="text-[10px] font-bold uppercase tracking-widest text-gray-400 block mb-2"
+                  >Webhook URL</label
+                >
                 <div class="flex gap-2">
-                  <code class="flex-1 bg-white p-3 rounded-xl border border-gray-200 text-xs text-blue-600 overflow-x-auto whitespace-nowrap">
-                    http://localhost:8090/api/senvanda/webhook/redeploy?token={{ project.webhookToken }}
+                  <code
+                    class="flex-1 bg-white p-3 rounded-xl border border-gray-200 text-xs text-blue-600 overflow-x-auto whitespace-nowrap"
+                  >
+                    http://localhost:8090/api/senvanda/webhook/redeploy?token={{
+                      project.webhookToken
+                    }}
                   </code>
-                   <Button variant="outline" size="icon" class="rounded-xl shrink-0" @click="copyToClipboard(`http://localhost:8090/api/senvanda/webhook/redeploy?token=${project.webhookToken}`)">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    class="rounded-xl shrink-0"
+                    @click="
+                      copyToClipboard(
+                        `http://localhost:8090/api/senvanda/webhook/redeploy?token=${project.webhookToken}`,
+                      )
+                    "
+                  >
                     <Copy class="w-4 h-4" />
                   </Button>
                 </div>
-                <p class="text-[10px] text-gray-400 mt-2 italic">* Use this URL in Woodpecker, GitHub, or GitLab Webhooks.</p>
+                <p class="text-[10px] text-gray-400 mt-2 italic">
+                  * Use this URL in Woodpecker, GitHub, or GitLab Webhooks.
+                </p>
               </div>
 
               <div class="space-y-3">
-                 <h4 class="font-bold text-sm">Example Payload (curl)</h4>
-                 <div class="bg-black text-gray-300 p-4 rounded-xl font-mono text-xs overflow-x-auto">
-                    curl -X POST "http://localhost:8090/api/senvanda/webhook/redeploy?token={{ project.webhookToken }}"
-                 </div>
+                <h4 class="font-bold text-sm">Example Payload (curl)</h4>
+                <div
+                  class="bg-black text-gray-300 p-4 rounded-xl font-mono text-xs overflow-x-auto"
+                >
+                  curl -X POST
+                  "http://localhost:8090/api/senvanda/webhook/redeploy?token={{
+                    project.webhookToken
+                  }}"
+                </div>
               </div>
 
-              <div class="flex items-start gap-4 p-4 bg-blue-50 rounded-2xl border border-blue-100">
-                  <Sparkles class="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
-                  <p class="text-xs text-blue-700 leading-relaxed">
-                    <strong>Pro Tip:</strong> You can use this webhook in your Woodpecker pipeline. Just add a 'curl' step after your build process to instantly update your cloud instance.
-                  </p>
+              <div
+                class="flex items-start gap-4 p-4 bg-blue-50 rounded-2xl border border-blue-100"
+              >
+                <Sparkles class="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
+                <p class="text-xs text-blue-700 leading-relaxed">
+                  <strong>Pro Tip:</strong> You can use this webhook in your
+                  Woodpecker pipeline. Just add a 'curl' step after your build
+                  process to instantly update your cloud instance.
+                </p>
               </div>
             </div>
           </div>
