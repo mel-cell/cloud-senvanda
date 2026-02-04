@@ -67,36 +67,60 @@ func (s *service) GetProjectsWithStatus(ctx context.Context) ([]ProjectStatus, e
 			fullName = strings.TrimPrefix(c.Names[0], "/")
 		}
 
-		// If it looks like a Senvanda User App container but isn't in our DB -> RECOVER IT
-		if strings.HasPrefix(fullName, "senvanda-app-") && !dbMap[fullName] && !dbMap[c.ID] {
-			fmt.Printf("[RECOVERY] Orphaned Senvanda App found: %s. Auto-healing record...\n", fullName)
+		// Logic Klasifikasi Category
+		isSenvandaApp := strings.HasPrefix(fullName, "senvanda-app-")
+		isSenvandaInfra := strings.HasPrefix(fullName, "senvanda-") && !isSenvandaApp
 
-			// Get default system user
-			user, _ := s.FindFirstUser(ctx)
+		// Skip jika sudah ada di DB
+		// Kita cek 'fullName' (nama asli container) dan ID
+		if dbMap[fullName] || dbMap[c.ID] {
+			continue
+		}
 
-			// Build Record
-			collection, _ := s.app.Dao().FindCollectionByNameOrId("projects")
-			rec := models.NewRecord(collection)
+		// Tentukan Kategori
+		category := "discovered"
+		cleanName := fullName
 
-			cleanName := strings.TrimPrefix(fullName, "senvanda-app-")
-			rec.Set("name", cleanName)
-			rec.Set("user", user.Id)
-			rec.Set("status", "running")
-			rec.Set("containerId", c.ID)
-			rec.Set("image", c.Image)
-			rec.Set("webhookToken", s.cicd.GenerateWebhookToken())
+		if isSenvandaApp {
+			category = "application"
+			cleanName = strings.TrimPrefix(fullName, "senvanda-app-")
+		} else if isSenvandaInfra {
+			category = "infrastructure"
+			cleanName = strings.TrimPrefix(fullName, "senvanda-")
+		} else {
+			// Untuk 'discovered', kita biarkan nama aslinya
+			category = "discovered"
+		}
 
-			// Try to find a port if exposed
-			if len(c.Ports) > 0 {
-				rec.Set("port", int(c.Ports[0].PublicPort))
-			} else {
-				port, _ := s.findAvailablePort()
-				rec.Set("port", port)
-			}
+		fmt.Printf("[DISCOVERY] Found new container: %s. Category: %s\n", fullName, category)
 
-			if err := s.app.Dao().SaveRecord(rec); err == nil {
-				records = append([]*models.Record{rec}, records...)
-			}
+		// Get default system user
+		user, _ := s.FindFirstUser(ctx)
+
+		// Build Record
+		collection, _ := s.app.Dao().FindCollectionByNameOrId("projects")
+		rec := models.NewRecord(collection)
+
+		rec.Set("name", cleanName)
+		rec.Set("user", user.Id)
+		rec.Set("status", "running")
+		rec.Set("containerId", c.ID)
+		rec.Set("image", c.Image)
+		rec.Set("category", category) // Set Kategori Baru
+		rec.Set("webhookToken", s.cicd.GenerateWebhookToken())
+
+		// Try to find a port if exposed
+		if len(c.Ports) > 0 {
+			rec.Set("port", int(c.Ports[0].PublicPort))
+		} else {
+			port, _ := s.findAvailablePort()
+			rec.Set("port", port)
+		}
+
+		if err := s.app.Dao().SaveRecord(rec); err == nil {
+			records = append([]*models.Record{rec}, records...)
+			// Update dbMap to prevent duplicates in same loop (just in case)
+			dbMap[fullName] = true
 		}
 	}
 
@@ -333,6 +357,7 @@ func (s *service) CreateProject(ctx context.Context, req CreateProjectReq, user 
 	record.Set("image", req.Image)
 	record.Set("webhookToken", s.cicd.GenerateWebhookToken())
 	record.Set("settings", req.Settings)
+	record.Set("category", "application") // Default category for new projects
 	record.Set("status", "draft")
 	if !req.IsDraft {
 		record.Set("status", "building")

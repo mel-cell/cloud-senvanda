@@ -49,6 +49,7 @@ func main() {
 			{Name: "volumes", Type: schema.FieldTypeJson},
 			{Name: "settings", Type: schema.FieldTypeJson},
 			{Name: "current_action", Type: schema.FieldTypeText}, // For Real-time UX
+			{Name: "category", Type: schema.FieldTypeText},       // application, infrastructure, discovered
 		}
 
 		for _, f := range requiredFields {
