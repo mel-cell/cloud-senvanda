@@ -67,9 +67,9 @@ func (s *service) GetProjectsWithStatus(ctx context.Context) ([]ProjectStatus, e
 			fullName = strings.TrimPrefix(c.Names[0], "/")
 		}
 
-		// If it looks like a Senvanda container but isn't in our DB -> RECOVER IT
-		if strings.HasPrefix(fullName, "senvanda-") && !dbMap[fullName] && !dbMap[c.ID] {
-			fmt.Printf("[RECOVERY] Orphaned Senvanda container found: %s. Auto-healing record...\n", fullName)
+		// If it looks like a Senvanda User App container but isn't in our DB -> RECOVER IT
+		if strings.HasPrefix(fullName, "senvanda-app-") && !dbMap[fullName] && !dbMap[c.ID] {
+			fmt.Printf("[RECOVERY] Orphaned Senvanda App found: %s. Auto-healing record...\n", fullName)
 
 			// Get default system user
 			user, _ := s.FindFirstUser(ctx)
@@ -78,7 +78,7 @@ func (s *service) GetProjectsWithStatus(ctx context.Context) ([]ProjectStatus, e
 			collection, _ := s.app.Dao().FindCollectionByNameOrId("projects")
 			rec := models.NewRecord(collection)
 
-			cleanName := strings.TrimPrefix(fullName, "senvanda-")
+			cleanName := strings.TrimPrefix(fullName, "senvanda-app-")
 			rec.Set("name", cleanName)
 			rec.Set("user", user.Id)
 			rec.Set("status", "running")

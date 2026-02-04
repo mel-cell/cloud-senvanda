@@ -443,6 +443,12 @@ onUnmounted(() => {
                     {{ project.state || project.status }}
                   </p>
                 </div>
+                <!-- Real-time Action Logs -->
+                <div v-if="['deploying', 'building'].includes(project.status) && project.current_action" 
+                     class="mt-2 text-[10px] font-mono text-orange-600 bg-orange-50 px-2 py-1 rounded border border-orange-100 animate-pulse truncate"
+                >
+                  {{ project.current_action }}
+                </div>
               </div>
               <div
                 class="p-5 bg-gray-50 rounded-2xl border border-gray-100 flex flex-col justify-between h-28"

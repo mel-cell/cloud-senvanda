@@ -36,17 +36,17 @@ func (h *DeploymentHandler) HandleDeployFinal(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid payload"})
 	}
 
-	if payload.Status != "success" {
-		log.Printf("⚠️ Build failed for project %s, skipping deployment", payload.ProjectID)
-		return c.JSON(http.StatusOK, map[string]string{"message": "build not successful, deployment skipped"})
-	}
-
-	log.Printf("🎯 Victory Cry received for project: %s! Image: %s", payload.ProjectID, payload.ImageTag)
-
 	// 3. Fetch Project from DB
 	project, err := h.service.app.Dao().FindRecordById("projects", payload.ProjectID)
 	if err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "project not found"})
+	}
+
+	// 4. Check Build Status
+	if payload.Status != "success" {
+		log.Printf("⚠️ Build failed for project %s, updating status...", payload.ProjectID)
+		h.service.markFailed(project, "CI Build Reported Failure")
+		return c.JSON(http.StatusOK, map[string]string{"message": "build failure recorded"})
 	}
 
 	// 4. Execute Final Deployment (Asynchronous)

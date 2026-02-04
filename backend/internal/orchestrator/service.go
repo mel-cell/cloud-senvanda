@@ -81,10 +81,8 @@ func (s *Service) DeployUserApp(project *models.Record, imageTag string) error {
 	// Phase 1: Preparation
 	log.Printf("🚀 Starting deployment for %s...", projectName)
 	project.Set("status", "deploying")
-	if err := s.app.Dao().SaveRecord(project); err != nil {
-		log.Printf("⚠️ Failed to update project status: %v", err)
-		// Continue anyway? For now, yes.
-	}
+	project.Set("current_action", "🚀 Initializing deployment...")
+	s.app.Dao().SaveRecord(project)
 
 	// Phase 2: Docker Action
 	containerName := fmt.Sprintf("senvanda-app-%s", projectName)
@@ -92,6 +90,9 @@ func (s *Service) DeployUserApp(project *models.Record, imageTag string) error {
 
 	// A. Pull Image
 	log.Printf("📦 Pulling image: %s", imageTag)
+	project.Set("current_action", "📦 Pulling latest docker image...")
+	s.app.Dao().SaveRecord(project)
+	
 	if err := s.dockerClient.PullImage(ctx, imageTag); err != nil {
 		s.markFailed(project, fmt.Sprintf("Failed to pull image: %v", err))
 		return err
@@ -99,10 +100,14 @@ func (s *Service) DeployUserApp(project *models.Record, imageTag string) error {
 
 	// B. Remove Old Container
 	log.Printf("♻️ Removing old container: %s", containerName)
+	project.Set("current_action", "♻️ Rotating containers...")
+	s.app.Dao().SaveRecord(project)
 	_ = s.dockerClient.RemoveContainer(ctx, containerName) // Ignore error if not exists
 
 	// C. Run New Container
 	log.Printf("▶️ Starting new container...")
+	project.Set("current_action", "▶️ Starting new container...")
+	s.app.Dao().SaveRecord(project)
 
 	// Extract Volumes from DB
 	var binds []string
@@ -162,6 +167,9 @@ func (s *Service) DeployUserApp(project *models.Record, imageTag string) error {
 	target := fmt.Sprintf("%s:%d", containerIP, appPort)
 
 	log.Printf("📡 Configuring Caddy route for %s -> %s", domain, target)
+	project.Set("current_action", "📡 Configuring secure proxy...")
+	s.app.Dao().SaveRecord(project)
+
 	if err := s.caddyClient.AddLinkDomain(domain, target); err != nil {
 		s.markFailed(project, fmt.Sprintf("Failed to configure Caddy: %v", err))
 		return err
@@ -172,6 +180,7 @@ func (s *Service) DeployUserApp(project *models.Record, imageTag string) error {
 	project.Set("last_deployed", time.Now())
 	project.Set("internal_ip", containerIP)
 	project.Set("url", fmt.Sprintf("http://%s", domain))
+	project.Set("current_action", "") // Clear action on success
 
 	if err := s.app.Dao().SaveRecord(project); err != nil {
 		log.Printf("⚠️ Failed to save final project state: %v", err)
@@ -185,5 +194,6 @@ func (s *Service) markFailed(project *models.Record, reason string) {
 	log.Printf("❌ Deployment failed: %s", reason)
 	project.Set("status", "failed")
 	project.Set("error_log", reason)
+	project.Set("current_action", "❌ Deployment failed")
 	s.app.Dao().SaveRecord(project)
 }

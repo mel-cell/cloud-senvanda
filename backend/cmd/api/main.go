@@ -48,6 +48,7 @@ func main() {
 			{Name: "error_log", Type: schema.FieldTypeText},
 			{Name: "volumes", Type: schema.FieldTypeJson},
 			{Name: "settings", Type: schema.FieldTypeJson},
+			{Name: "current_action", Type: schema.FieldTypeText}, // For Real-time UX
 		}
 
 		for _, f := range requiredFields {
