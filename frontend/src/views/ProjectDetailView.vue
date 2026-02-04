@@ -710,8 +710,8 @@ onUnmounted(() => {
                   <code
                     class="flex-1 bg-white p-3 rounded-xl border border-gray-200 text-xs text-blue-600 overflow-x-auto whitespace-nowrap"
                   >
-                    http://localhost:8090/api/senvanda/webhook/redeploy?token={{
-                      project.webhookToken
+                    http://api.senvanda.local:9080/api/senvanda/webhook/{{
+                      project.id
                     }}
                   </code>
                   <Button
@@ -720,7 +720,7 @@ onUnmounted(() => {
                     class="rounded-xl shrink-0"
                     @click="
                       copyToClipboard(
-                        `http://localhost:8090/api/senvanda/webhook/redeploy?token=${project.webhookToken}`,
+                        `http://api.senvanda.local:9080/api/senvanda/webhook/${project.id}`,
                       )
                     "
                   >
@@ -728,7 +728,7 @@ onUnmounted(() => {
                   </Button>
                 </div>
                 <p class="text-[10px] text-gray-400 mt-2 italic">
-                  * Use this URL in Woodpecker, GitHub, or GitLab Webhooks.
+                  * Use this Internal URL in Gitea Webhooks (ensure Gitea is in the same Docker network).
                 </p>
               </div>
 
@@ -738,8 +738,8 @@ onUnmounted(() => {
                   class="bg-black text-gray-300 p-4 rounded-xl font-mono text-xs overflow-x-auto"
                 >
                   curl -X POST
-                  "http://localhost:8090/api/senvanda/webhook/redeploy?token={{
-                    project.webhookToken
+                  "http://api.senvanda.local:9080/api/senvanda/webhook/{{
+                    project.id
                   }}"
                 </div>
               </div>

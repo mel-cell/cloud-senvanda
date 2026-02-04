@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 )
 
 type Client struct {
@@ -18,7 +19,9 @@ func NewClient(baseURL string) *Client {
 	}
 	return &Client{
 		BaseURL: baseURL,
-		client:  &http.Client{},
+		client: &http.Client{
+			Timeout: 10 * time.Second, // Prevent hanging forever
+		},
 	}
 }
 

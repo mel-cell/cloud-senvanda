@@ -3,7 +3,6 @@ package webhook
 import (
 	"log"
 	"net/http"
-	"strings"
 
 	"github.com/labstack/echo/v5"
 	"github.com/senvanda/backend/internal/orchestrator"
@@ -46,27 +45,18 @@ func (h *Handler) HandleGiteaPush(c echo.Context) error {
 
 	log.Printf("✅ Webhook Accepted for Project: %s (ID: %s)", project.GetString("name"), project.Id)
 
-	// 3. Trigger Async CI/CD Pipeline
-	go func() {
-		log.Printf("⏳ Triggering CI Build for %s", project.GetString("name"))
-		// Parse branch from Ref (e.g. "refs/heads/main" -> "main")
-		branch := "main"
-		if payload.Ref != "" {
-			parts := strings.Split(payload.Ref, "/")
-			if len(parts) >= 3 {
-				branch = parts[len(parts)-1]
-			}
-		}
+	// 3. Update Status only (Wait for Native Woodpecker Webhook)
+	log.Printf("⏳ Push Detected for %s. Waiting for Woodpecker to pick up...", project.GetString("name"))
 
-		if err := h.orchestrator.TriggerBuildPipeline(project, branch); err != nil {
-			log.Printf("❌ Build Trigger failed: %v", err)
-		}
-	}()
+	project.Set("status", "building")
+	if err := h.service.app.Dao().SaveRecord(project); err != nil {
+		log.Printf("⚠️ Failed to update status: %v", err)
+	}
 
-	return c.JSON(http.StatusAccepted, map[string]string{
+	return c.JSON(http.StatusOK, map[string]string{
 		"status":     "accepted",
 		"project_id": project.Id,
-		"message":    "CI Build triggered. Monitor Woodpecker for progress.",
+		"message":    "Push received. CI/CD pipeline should start shortly.",
 	})
 }
 

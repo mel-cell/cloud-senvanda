@@ -95,17 +95,18 @@ func main() {
 		}
 		defer dockerClient.Close()
 
-		caddyClient := caddy.NewClient("http://caddy:2019")
+		caddyURL := os.Getenv("CADDY_API_URL")
+		if caddyURL == "" {
+			caddyURL = "http://caddy:2019"
+		}
+		caddyClient := caddy.NewClient(caddyURL)
 
 		// Woodpecker Client (The Worker)
-		// We use internal communication if possible, or domain via Caddy
-		// Internal: http://woodpecker-server:8000
 		ciToken := os.Getenv("WOODPECKER_API_TOKEN")
-		// Use the port we exposed internally or the service name. Ideally service name.
-		// Since we are in the same network, http://woodpecker-server:8000 is reachable if expose setting allows
-		// or if we use the internal port.
-		// NOTE: In docker-compose, woodpecker-server listens on 8000 internally.
-		ciURL := "http://woodpecker-server:8000"
+		ciURL := os.Getenv("WOODPECKER_API_URL")
+		if ciURL == "" {
+			ciURL = "http://woodpecker-server:8000"
+		}
 		woodpeckerClient := woodpecker.NewClient(ciURL, ciToken)
 
 		// 2. Inisialisasi Logic Layer (The Brain)
