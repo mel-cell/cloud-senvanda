@@ -71,6 +71,12 @@ func (s *service) GetProjectsWithStatus(ctx context.Context) ([]ProjectStatus, e
 		isSenvandaApp := strings.HasPrefix(fullName, "senvanda-app-")
 		isSenvandaInfra := strings.HasPrefix(fullName, "senvanda-") && !isSenvandaApp
 
+		// STRICT MODE: Skip jika bukan bagian dari Ecosystem Senvanda
+		// Kita tidak mau sampah (redis, postgres, dll) masuk ke Dashboard
+		if !isSenvandaApp && !isSenvandaInfra {
+			continue
+		}
+
 		// Skip jika sudah ada di DB
 		// Kita cek 'fullName' (nama asli container) dan ID
 		if dbMap[fullName] || dbMap[c.ID] {
@@ -87,9 +93,6 @@ func (s *service) GetProjectsWithStatus(ctx context.Context) ([]ProjectStatus, e
 		} else if isSenvandaInfra {
 			category = "infrastructure"
 			cleanName = strings.TrimPrefix(fullName, "senvanda-")
-		} else {
-			// Untuk 'discovered', kita biarkan nama aslinya
-			category = "discovered"
 		}
 
 		fmt.Printf("[DISCOVERY] Found new container: %s. Category: %s\n", fullName, category)
