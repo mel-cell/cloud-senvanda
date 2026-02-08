@@ -204,6 +204,27 @@ func (s *service) StreamLogs(ctx context.Context, id string) (io.ReadCloser, err
 	return s.containers.StreamContainerLogs(ctx, containerName)
 }
 
+func (s *service) GetProjectStats(ctx context.Context, id string) (*ProjectStats, error) {
+	record, err := s.app.Dao().FindRecordById("projects", id)
+	if err != nil {
+		return nil, err
+	}
+
+	containerName := "senvanda-" + record.GetString("name")
+	
+	stats, err := s.containers.GetStats(ctx, containerName)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ProjectStats{
+		CPUPercent:    stats.CPUPercent,
+		MemoryBytes:   stats.MemoryUsage,
+		MemoryLimit:   stats.MemoryLimit,
+		MemoryPercent: stats.MemoryPercent,
+	}, nil
+}
+
 func (s *service) ActionProject(ctx context.Context, id, action string) error {
 	record, err := s.app.Dao().FindRecordById("projects", id) // Changed projectID to id
 	if err != nil {

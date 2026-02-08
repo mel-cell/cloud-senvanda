@@ -24,6 +24,14 @@ type Service interface {
 	AdoptProject(ctx context.Context, containerID string, userID string) (*models.Record, error)
 	PruneMissingProjects(ctx context.Context) (int, error)
 	StreamLogs(ctx context.Context, id string) (io.ReadCloser, error)
+	GetProjectStats(ctx context.Context, id string) (*ProjectStats, error)
+}
+
+type ProjectStats struct {
+	CPUPercent    float64 `json:"cpu_percent"`
+	MemoryBytes   float64 `json:"memory_bytes"`
+	MemoryLimit   float64 `json:"memory_limit"`
+	MemoryPercent float64 `json:"memory_percent"`
 }
 
 type ProjectStatus struct {

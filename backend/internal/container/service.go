@@ -2,6 +2,7 @@ package container
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"os/exec"
 	"strconv"
@@ -29,6 +30,14 @@ type Service interface {
 	PullImage(ctx context.Context, image string) error
 	BuildImage(ctx context.Context, contextPath string, tag string) error
 	ContainerExists(ctx context.Context, name string) (bool, error)
+	GetStats(ctx context.Context, name string) (*ContainerMetrics, error)
+}
+
+type ContainerMetrics struct {
+	CPUPercent    float64 `json:"cpu_percent"`
+	MemoryUsage   float64 `json:"memory_usage"` // bytes
+	MemoryLimit   float64 `json:"memory_limit"` // bytes
+	MemoryPercent float64 `json:"memory_percent"`
 }
 
 type ContainerDetails struct {
@@ -237,6 +246,70 @@ func (s *service) StreamContainerLogs(ctx context.Context, name string) (io.Read
 	}
 	// Mengembalikan stream reader langsung dari Docker API
 	return s.cli.ContainerLogs(ctx, name, options)
+}
+
+func (s *service) GetStats(ctx context.Context, name string) (*ContainerMetrics, error) {
+	statsStream, err := s.cli.ContainerStats(ctx, name, false) // stream=false -> ambil snapshot saat ini saja
+	if err != nil {
+		return nil, err
+	}
+	defer statsStream.Body.Close()
+
+	var v dockerStats
+	if err := json.NewDecoder(statsStream.Body).Decode(&v); err != nil {
+		return nil, err
+	}
+
+	// 1. CPU Calculation
+	// Based on Docker CLI implementation
+	var cpuPercent = 0.0
+	cpuDelta := float64(v.CPUStats.CPUUsage.TotalUsage) - float64(v.PreCPUStats.CPUUsage.TotalUsage)
+	systemDelta := float64(v.CPUStats.SystemUsage) - float64(v.PreCPUStats.SystemUsage)
+	onlineCPUs := float64(v.CPUStats.OnlineCPUs)
+	if onlineCPUs == 0.0 {
+		onlineCPUs = float64(len(v.CPUStats.CPUUsage.PercpuUsage))
+	}
+
+	if systemDelta > 0.0 && cpuDelta > 0.0 {
+		cpuPercent = (cpuDelta / systemDelta) * onlineCPUs * 100.0
+	}
+
+	// 2. Memory Calculation
+	memUsage := float64(v.MemoryStats.Usage)
+	memLimit := float64(v.MemoryStats.Limit)
+	memPercent := 0.0
+	if memLimit > 0 {
+		memPercent = (memUsage / memLimit) * 100.0
+	}
+
+	return &ContainerMetrics{
+		CPUPercent:    cpuPercent,
+		MemoryUsage:   memUsage,
+		MemoryLimit:   memLimit,
+		MemoryPercent: memPercent,
+	}, nil
+}
+
+// Local helper structs for Docker Stats JSON decoding
+// Menghindari ketergantungan pada lokasi struct di SDK docker yang berubah-ubah
+type dockerStats struct {
+	CPUStats    dockerCPUStats `json:"cpu_stats"`
+	PreCPUStats dockerCPUStats `json:"precpu_stats"`
+	MemoryStats dockerMemStats `json:"memory_stats"`
+}
+
+type dockerCPUStats struct {
+	CPUUsage struct {
+		TotalUsage  uint64   `json:"total_usage"`
+		PercpuUsage []uint64 `json:"percpu_usage"`
+	} `json:"cpu_usage"`
+	SystemUsage uint64 `json:"system_cpu_usage"`
+	OnlineCPUs  uint32 `json:"online_cpus"`
+}
+
+type dockerMemStats struct {
+	Usage uint64 `json:"usage"`
+	Limit uint64 `json:"limit"`
 }
 
 func (s *service) PullImage(ctx context.Context, img string) error {

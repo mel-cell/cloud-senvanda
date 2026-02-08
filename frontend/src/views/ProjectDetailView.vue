@@ -111,6 +111,30 @@ const scaleResources = async () => {
 // Env Var Helpers
 const addEnv = () => form.envVars.push({ key: "", value: "" });
 const removeEnv = (idx) => form.envVars.splice(idx, 1);
+const stats = ref({
+  cpu_percent: 0,
+  memory_bytes: 0,
+  memory_limit: 0,
+  memory_percent: 0,
+});
+let statsTimer = null;
+
+const fetchStats = async () => {
+  if (!project.value || (project.value.status !== 'running' && project.value.status !== 'online')) {
+      // Reset if not running
+      stats.value = { cpu_percent: 0, memory_bytes: 0, memory_limit: 0, memory_percent: 0 };
+      return;
+  }
+  
+  try {
+    const res = await pb.send(`/api/senvanda/deploy/${project.value.id}/stats`);
+    // Smooth update? For now direct replacement
+    stats.value = res;
+  } catch (err) {
+    // console.warn("Stats error", err); 
+    // Ignore error to avoid spamming console on navigation
+  }
+};
 
 let statusTimer = null;
 
@@ -322,6 +346,10 @@ watch(activeTab, (newTab) => {
 
 onMounted(() => {
   loadProject();
+  
+  // Start Stats Polling
+  fetchStats();
+  statsTimer = setInterval(fetchStats, 2000);
 
   // Real-time Status Subscription (Stability & Premium UX)
   pb.collection("projects").subscribe(route.params.id, (e) => {
@@ -333,6 +361,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  if (statsTimer) clearInterval(statsTimer);
   pb.collection("projects").unsubscribe(route.params.id);
   disconnectLogStream();
 });
@@ -651,15 +680,15 @@ onUnmounted(() => {
                       >CPU</span
                     >
                     <span class="font-mono font-bold text-gray-900"
-                      >0.05 / 0.5 vCPU</span
+                      >{{ stats.cpu_percent.toFixed(2) }}%</span
                     >
                   </div>
                   <div
                     class="h-2 w-full bg-gray-100 rounded-full overflow-hidden"
                   >
                     <div
-                      class="h-full bg-gray-900 w-[10%] rounded-full transition-all duration-1000"
-                      style="width: 12%"
+                      class="h-full bg-gray-900 rounded-full transition-all duration-1000"
+                      :style="`width: ${Math.min(stats.cpu_percent, 100)}%`"
                     ></div>
                   </div>
                 </div>
@@ -670,15 +699,15 @@ onUnmounted(() => {
                       >Memory</span
                     >
                     <span class="font-mono font-bold text-gray-900"
-                      >128 / 512 MB</span
+                      >{{ (stats.memory_bytes / 1024 / 1024).toFixed(0) }} / {{ (stats.memory_limit / 1024 / 1024).toFixed(0) }} MB</span
                     >
                   </div>
                   <div
                     class="h-2 w-full bg-gray-100 rounded-full overflow-hidden"
                   >
                     <div
-                      class="h-full bg-gray-900 w-[45%] rounded-full transition-all duration-1000"
-                      style="width: 25%"
+                      class="h-full bg-gray-900 rounded-full transition-all duration-1000"
+                      :style="`width: ${stats.memory_percent}%`"
                     ></div>
                   </div>
                 </div>

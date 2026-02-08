@@ -32,6 +32,7 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.POST("/deploy/adopt", h.handleAdoptProject)
 	g.GET("/deploy/:id/logs", h.handleGetLogs)
 	g.GET("/deploy/:id/logs/stream", h.handleStreamLogs)
+	g.GET("/deploy/:id/stats", h.handleGetStats)
 	g.POST("/deploy/:id/action", h.handleProjectAction)
 	g.POST("/webhook/redeploy", h.handleWebhookRedeploy)
 }
@@ -216,6 +217,24 @@ func (h *Handler) handleStreamLogs(c echo.Context) error {
 	}
 
 	return nil
+}
+
+func (h *Handler) handleGetStats(c echo.Context) error {
+	id := c.PathParam("id")
+	stats, err := h.service.GetProjectStats(c.Request().Context(), id)
+	if err != nil {
+		// Log error but return OK with zero stats so UI doesn't break
+		// Typical scenario: container stopped or restarting
+		fmt.Printf("[STATS] Failed to get stats for %s: %v\n", id, err)
+		return c.JSON(200, map[string]interface{}{
+			"cpu_percent":    0,
+			"memory_bytes":   0,
+			"memory_limit":   0,
+			"memory_percent": 0,
+			"status":         "offline",
+		})
+	}
+	return c.JSON(200, stats)
 }
 
 func (h *Handler) handlePruneProjects(c echo.Context) error {
