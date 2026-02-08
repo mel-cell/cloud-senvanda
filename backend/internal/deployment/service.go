@@ -6,8 +6,11 @@ import (
 	"io"
 	"net"
 	"os/exec"
+	"runtime"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"os"
@@ -211,7 +214,7 @@ func (s *service) GetProjectStats(ctx context.Context, id string) (*ProjectStats
 	}
 
 	containerName := "senvanda-" + record.GetString("name")
-	
+
 	stats, err := s.containers.GetStats(ctx, containerName)
 	if err != nil {
 		return nil, err
@@ -642,4 +645,79 @@ func extractNameFromUrl(url string) string {
 	parts := strings.Split(url, "/")
 	last := parts[len(parts)-1]
 	return strings.TrimSuffix(last, ".git")
+}
+
+func (s *service) GetClusterStats(ctx context.Context) (*ClusterStats, error) {
+	// 1. Get all active projects
+	allProjects, err := s.GetProjectsWithStatus(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	activeProjects := []ProjectStatus{}
+	for _, p := range allProjects {
+		if p.Status == "running" {
+			activeProjects = append(activeProjects, p)
+		}
+	}
+
+	// 2. Prepare result
+	stats := &ClusterStats{
+		ActiveProjects: len(activeProjects),
+		HostInfo: HostInfo{
+			Hostname: "unknown",
+			OS:       runtime.GOOS,
+			CPUCores: runtime.NumCPU(),
+			MemTotal: 0,
+		},
+	}
+
+	if h, err := os.Hostname(); err == nil {
+		stats.HostInfo.Hostname = h
+	}
+
+	// 3. Parallel Fetch Stats
+	var wg sync.WaitGroup
+	statsChan := make(chan *ProjectStats, len(activeProjects))
+	sem := make(chan struct{}, 10) // Semaphore
+
+	for _, p := range activeProjects {
+		wg.Add(1)
+		go func(proj ProjectStatus) {
+			defer wg.Done()
+			sem <- struct{}{}        // Acquire
+			defer func() { <-sem }() // Release
+
+			// Get individual stats
+			st, err := s.GetProjectStats(ctx, proj.ID)
+			if err == nil {
+				st.ProjectName = proj.Name
+				statsChan <- st
+			}
+		}(p)
+	}
+
+	wg.Wait()
+	close(statsChan)
+
+	// 4. Aggregate
+	var consumers []ProjectStats
+	for st := range statsChan {
+		stats.TotalCPU += st.CPUPercent
+		stats.TotalMemory += st.MemoryBytes
+		consumers = append(consumers, *st)
+	}
+
+	// 5. Sort Top Consumers (by CPU Descending)
+	sort.Slice(consumers, func(i, j int) bool {
+		return consumers[i].CPUPercent > consumers[j].CPUPercent
+	})
+
+	if len(consumers) > 5 {
+		stats.TopConsumers = consumers[:5]
+	} else {
+		stats.TopConsumers = consumers
+	}
+
+	return stats, nil
 }

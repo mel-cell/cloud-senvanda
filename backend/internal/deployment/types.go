@@ -25,6 +25,22 @@ type Service interface {
 	PruneMissingProjects(ctx context.Context) (int, error)
 	StreamLogs(ctx context.Context, id string) (io.ReadCloser, error)
 	GetProjectStats(ctx context.Context, id string) (*ProjectStats, error)
+	GetClusterStats(ctx context.Context) (*ClusterStats, error)
+}
+
+type ClusterStats struct {
+	TotalCPU       float64        `json:"total_cpu"`
+	TotalMemory    float64        `json:"total_memory"`
+	ActiveProjects int            `json:"active_projects"`
+	TopConsumers   []ProjectStats `json:"top_consumers"`
+	HostInfo       HostInfo       `json:"host_info"`
+}
+
+type HostInfo struct {
+	Hostname string `json:"hostname"`
+	OS       string `json:"os"`
+	CPUCores int    `json:"cpu_cores"`
+	MemTotal int64  `json:"mem_total"`
 }
 
 type ProjectStats struct {
@@ -32,16 +48,17 @@ type ProjectStats struct {
 	MemoryBytes   float64 `json:"memory_bytes"`
 	MemoryLimit   float64 `json:"memory_limit"`
 	MemoryPercent float64 `json:"memory_percent"`
+	ProjectName   string  `json:"project_name,omitempty"`
 }
 
 type ProjectStatus struct {
-	ID       string                 `json:"id"`
-	Name     string                 `json:"name"`
-	Port     int                    `json:"port"`
-	DBStatus string                 `json:"db_status"`
-	Status   string                 `json:"status"`
-	State    string                 `json:"state"`
-	Created  interface{}            `json:"created"`
+	ID            string                 `json:"id"`
+	Name          string                 `json:"name"`
+	Port          int                    `json:"port"`
+	DBStatus      string                 `json:"db_status"`
+	Status        string                 `json:"status"`
+	State         string                 `json:"state"`
+	Created       interface{}            `json:"created"`
 	Image         string                 `json:"image"`
 	RepoUrl       string                 `json:"repoUrl"`
 	Category      string                 `json:"category"`       // NEW: application, infrastructure

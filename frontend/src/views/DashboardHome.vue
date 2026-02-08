@@ -79,8 +79,10 @@ const handleProjectAction = async (id, action) => {
 const filteredProjects = computed(() => {
   let items = projects.value;
 
-  // 1. Filter by Category (Tab)
-  items = items.filter(p => (p.category || 'discovered') === activeTab.value);
+  // 1. Filter by Category (Only if not searching)
+  if (!searchStore.query) {
+      items = items.filter(p => (p.category || 'discovered') === activeTab.value);
+  }
 
   // 2. Filter by Status (Pill)
   if (filter.value !== "all") {
@@ -90,7 +92,16 @@ const filteredProjects = computed(() => {
   // 3. Filter by Search Query
   if (searchStore.query) {
     const q = searchStore.query.toLowerCase();
-    items = items.filter(p => p.name.toLowerCase().includes(q));
+    items = items.filter(p => {
+        const text = [
+            p.name, 
+            p.id, 
+            p.framework || '', 
+            p.image || '', 
+            p.repoUrl || ''
+        ].join(' ').toLowerCase();
+        return text.includes(q);
+    });
   }
   
   return items;
@@ -216,17 +227,27 @@ onUnmounted(() => {
       <!-- Top Toolbar -->
       <div class="flex flex-col gap-6">
         <!-- CATEGORY TABS -->
-        <div class="flex items-center gap-1 bg-gray-100/50 p-1 rounded-full w-fit border border-gray-200">
-             <button 
-                v-for="tab in ['application', 'infrastructure']" 
-                :key="tab"
-                @click="activeTab = tab"
-                class="px-6 py-2 rounded-full text-sm font-bold transition-all capitalize flex items-center gap-2"
-                :class="activeTab === tab ? 'bg-white shadow text-black' : 'text-gray-400 hover:text-gray-600'"
-             >
-                {{ tab }}
-                <span v-if="getCategoryCount(tab) > 0" class="bg-gray-200 text-[10px] px-1.5 py-0.5 rounded-full min-w-[20px]">{{ getCategoryCount(tab) }}</span>
-             </button>
+        <div class="flex flex-col gap-2">
+            <div class="flex items-center gap-1 bg-gray-100/50 p-1 rounded-full w-fit border border-gray-200" :class="{ 'opacity-50 pointer-events-none': searchStore.query }">
+                 <button 
+                    v-for="tab in ['application', 'infrastructure']" 
+                    :key="tab"
+                    @click="activeTab = tab"
+                    class="px-6 py-2 rounded-full text-sm font-bold transition-all capitalize flex items-center gap-2"
+                    :class="activeTab === tab ? 'bg-white shadow text-black' : 'text-gray-400 hover:text-gray-600'"
+                 >
+                    {{ tab }}
+                    <span v-if="getCategoryCount(tab) > 0" class="bg-gray-200 text-[10px] px-1.5 py-0.5 rounded-full min-w-[20px]">{{ getCategoryCount(tab) }}</span>
+                 </button>
+            </div>
+            
+            <!-- Tech-Style Search Alert -->
+            <div v-if="searchStore.query" class="flex items-center gap-2 text-xs font-mono text-gray-500 bg-yellow-50 px-3 py-1.5 rounded-lg border border-yellow-100 w-fit animate-in fade-in slide-in-from-top-2">
+                <span class="w-1.5 h-1.5 bg-yellow-500 rounded-full animate-pulse"></span>
+                Searching globally for "{{ searchStore.query }}"
+                <span class="font-bold text-black border-l border-yellow-200 pl-2 ml-1">{{ filteredProjects.length }} result(s)</span>
+                <button @click="searchStore.query = ''" class="ml-2 hover:bg-white hover:shadow-sm px-1.5 py-0.5 rounded transition-all text-gray-400 hover:text-red-500">✕ Clear</button>
+            </div>
         </div>
 
         <div class="flex flex-wrap items-center justify-between gap-4">
@@ -242,6 +263,7 @@ onUnmounted(() => {
                   : 'bg-white text-gray-500 hover:bg-gray-50 border-gray-200'
               "
               @click="filter = 'all'"
+              :disabled="!!searchStore.query"
             >
               All Items
             </button>

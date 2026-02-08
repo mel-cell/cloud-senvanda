@@ -32,9 +32,11 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.POST("/deploy/adopt", h.handleAdoptProject)
 	g.GET("/deploy/:id/logs", h.handleGetLogs)
 	g.GET("/deploy/:id/logs/stream", h.handleStreamLogs)
+	g.GET("/deploy/cluster/stats", h.handleGetClusterStats) // Global Stats
 	g.GET("/deploy/:id/stats", h.handleGetStats)
 	g.POST("/deploy/:id/action", h.handleProjectAction)
 	g.POST("/webhook/redeploy", h.handleWebhookRedeploy)
+	g.GET("/deploy/info", h.handleGetInfo)
 }
 
 func (h *Handler) handleGetInfo(c echo.Context) error {
@@ -49,6 +51,14 @@ func (h *Handler) handleGetInfo(c echo.Context) error {
 		"containers":     info.Containers,
 		"running":        info.ContainersRunning,
 	})
+}
+
+func (h *Handler) handleGetClusterStats(c echo.Context) error {
+	stats, err := h.service.GetClusterStats(c.Request().Context())
+	if err != nil {
+		return apis.NewBadRequestError("Failed to get cluster stats", err)
+	}
+	return c.JSON(200, stats)
 }
 
 func (h *Handler) handleListProjects(c echo.Context) error {
