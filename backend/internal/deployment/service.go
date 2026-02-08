@@ -3,6 +3,7 @@ package deployment
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"os/exec"
 	"strconv"
@@ -164,23 +165,47 @@ func (s *service) GetProjectsWithStatus(ctx context.Context) ([]ProjectStatus, e
 		}
 
 		results = append(results, ProjectStatus{
-			ID:       r.Id,
-			Name:     name,
-			Port:     r.GetInt("port"),
-			DBStatus: r.GetString("status"),
-			Status:   status,
-			State:    state,
-			Created:  r.Created,
-			Image:    r.GetString("image"),
-			RepoUrl:  r.GetString("repoUrl"),
+			ID:            r.Id,
+			Name:          name,
+			Port:          r.GetInt("port"),
+			DBStatus:      r.GetString("status"),
+			Status:        status,
+			State:         state,
+			Created:       r.Created,
+			Image:         r.GetString("image"),
+			RepoUrl:       r.GetString("repoUrl"),
+			Category:      r.GetString("category"),
+			CurrentAction: r.GetString("current_action"),
 		})
 	}
 
 	return results, nil
 }
 
-func (s *service) ActionProject(ctx context.Context, projectID string, action string) error {
+func (s *service) GetProjectLogs(ctx context.Context, projectID string) (string, error) {
 	record, err := s.app.Dao().FindRecordById("projects", projectID)
+	if err != nil {
+		return "", err
+	}
+
+	containerName := "senvanda-" + record.GetString("name")
+	return s.containers.GetContainerLogs(ctx, containerName)
+}
+
+func (s *service) StreamLogs(ctx context.Context, id string) (io.ReadCloser, error) {
+	record, err := s.app.Dao().FindRecordById("projects", id)
+	if err != nil {
+		return nil, err
+	}
+
+	containerName := "senvanda-" + record.GetString("name") // Assuming getContainerName is this logic
+
+	// Jika status 'building', mungkin bisa stream log build, tapi sekarang fokus log container
+	return s.containers.StreamContainerLogs(ctx, containerName)
+}
+
+func (s *service) ActionProject(ctx context.Context, id, action string) error {
+	record, err := s.app.Dao().FindRecordById("projects", id) // Changed projectID to id
 	if err != nil {
 		return err
 	}
@@ -462,15 +487,6 @@ func (s *service) DiscoverLegacy(ctx context.Context) ([]LegacyApp, error) {
 		}
 	}
 	return apps, nil
-}
-func (s *service) GetProjectLogs(ctx context.Context, projectID string) (string, error) {
-	record, err := s.app.Dao().FindRecordById("projects", projectID)
-	if err != nil {
-		return "", err
-	}
-
-	containerName := "senvanda-" + record.GetString("name")
-	return s.containers.GetContainerLogs(ctx, containerName)
 }
 
 func (s *service) AdoptProject(ctx context.Context, containerID string, userID string) (*models.Record, error) {

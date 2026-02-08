@@ -2,6 +2,7 @@ package deployment
 
 import (
 	"context"
+	"io"
 
 	"github.com/docker/docker/api/types/system"
 	"github.com/pocketbase/pocketbase/models"
@@ -22,6 +23,7 @@ type Service interface {
 	DiscoverLegacy(ctx context.Context) ([]LegacyApp, error)
 	AdoptProject(ctx context.Context, containerID string, userID string) (*models.Record, error)
 	PruneMissingProjects(ctx context.Context) (int, error)
+	StreamLogs(ctx context.Context, id string) (io.ReadCloser, error)
 }
 
 type ProjectStatus struct {
@@ -32,9 +34,11 @@ type ProjectStatus struct {
 	Status   string                 `json:"status"`
 	State    string                 `json:"state"`
 	Created  interface{}            `json:"created"`
-	Image    string                 `json:"image"`
-	RepoUrl  string                 `json:"repoUrl"`
-	Labels   map[string]interface{} `json:"labels,omitempty"`
+	Image         string                 `json:"image"`
+	RepoUrl       string                 `json:"repoUrl"`
+	Category      string                 `json:"category"`       // NEW: application, infrastructure
+	CurrentAction string                 `json:"current_action"` // NEW: For live deployment feedback
+	Labels        map[string]interface{} `json:"labels,omitempty"`
 }
 
 type LegacyApp struct {

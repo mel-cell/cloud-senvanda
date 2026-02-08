@@ -25,6 +25,7 @@ type Service interface {
 	DiscoverLegacyContainers(ctx context.Context) ([]LegacyContainer, error)
 	GetContainerDetails(ctx context.Context, id string) (*ContainerDetails, error)
 	GetContainerLogs(ctx context.Context, name string) (string, error)
+	StreamContainerLogs(ctx context.Context, name string) (io.ReadCloser, error)
 	PullImage(ctx context.Context, image string) error
 	BuildImage(ctx context.Context, contextPath string, tag string) error
 	ContainerExists(ctx context.Context, name string) (bool, error)
@@ -225,6 +226,17 @@ func (s *service) GetContainerLogs(ctx context.Context, name string) (string, er
 		return "", err
 	}
 	return string(content), nil
+}
+
+func (s *service) StreamContainerLogs(ctx context.Context, name string) (io.ReadCloser, error) {
+	options := container.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Follow:     true, // Kunci utama untuk streaming
+		Tail:       "50", // Mulai dengan 50 baris terakhir
+	}
+	// Mengembalikan stream reader langsung dari Docker API
+	return s.cli.ContainerLogs(ctx, name, options)
 }
 
 func (s *service) PullImage(ctx context.Context, img string) error {

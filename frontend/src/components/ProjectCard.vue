@@ -1,7 +1,7 @@
 <script setup>
 import { computed } from "vue";
 import { useRouter } from "vue-router";
-import { Play, Square, MoreHorizontal, Globe, Activity } from "lucide-vue-next";
+import { Play, Square, MoreHorizontal, Globe, Activity, RefreshCw, ExternalLink, Power, Box } from "lucide-vue-next";
 
 const props = defineProps({
   project: {
@@ -69,6 +69,23 @@ const cardTheme = computed(() => {
       };
   }
 });
+
+const externalUrl = computed(() => {
+  if (props.project.category === 'infrastructure') {
+    if (props.project.name === 'gitea') return 'http://git.senvanda.local:9080';
+    if (props.project.name === 'ci') return 'http://ci.senvanda.local:9080';
+    if (props.project.name === 'backend') return 'http://api.senvanda.local:9080/_/';
+    if (props.project.name === 'registry') return 'http://registry.senvanda.local:9080';
+  }
+  // Application fallback
+  return `http://${props.project.name}.senvanda.local:9080`;
+});
+
+const formattedDate = computed(() => {
+  if (!props.project.created) return 'Recent';
+  const d = new Date(props.project.created);
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' });
+});
 </script>
 
 <template>
@@ -130,62 +147,81 @@ const cardTheme = computed(() => {
         <div
           class="w-6 h-6 rounded-full bg-white/40 flex items-center justify-center"
         >
-          <Globe class="w-3 h-3" />
+          <component :is="project.category === 'infrastructure' ? Box : Globe" class="w-3 h-3" />
         </div>
         <span class="text-sm font-medium truncate">{{
-          project.repoUrl || "No Source"
+          project.category === 'infrastructure' ? project.image : (project.repoUrl || "No Source")
         }}</span>
       </div>
     </div>
 
     <!-- Bottom: Owner & Controls -->
     <div class="flex items-center justify-between mt-auto">
-      <!-- Owner Avatar -->
+      <!-- Owner Info -->
       <div class="flex items-center gap-3">
         <div
           class="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center overflow-hidden"
         >
-          <img
-            v-if="project.avatarUrl"
-            :src="project.avatarUrl"
-            class="w-full h-full object-cover"
-          />
-          <span v-else class="text-sm font-bold opacity-50">M</span>
+          <span class="text-sm font-bold opacity-30">{{ (project.name || 'S')[0].toUpperCase() }}</span>
         </div>
         <div class="flex flex-col">
-          <span class="text-xs font-bold opacity-80">Melvin</span>
-          <span class="text-[10px] opacity-50">21 Nov 23</span>
+          <span class="text-xs font-bold opacity-80">{{ project.category === 'infrastructure' ? 'System' : 'Project' }}</span>
+          <span class="text-[10px] opacity-50">{{ formattedDate }}</span>
         </div>
       </div>
 
-      <!-- FAB Action Button -->
-      <!-- DRAFT: RESUME -->
-      <button
-        v-if="project.status === 'draft'"
-        class="w-10 h-10 rounded-full bg-white text-gray-600 border border-gray-200 flex items-center justify-center shadow-sm hover:bg-gray-50 hover:scale-105 transition-all"
-        @click.stop="$emit('action', project.id, 'resume')"
-        title="Resume Setup"
-      >
-        <Activity class="w-4 h-4" />
-      </button>
+      <!-- Quick Actions -->
+      <div class="flex items-center gap-2">
+        <!-- External Link -->
+        <button
+          v-if="['running', 'online'].includes(project.status)"
+          class="w-9 h-9 rounded-xl bg-white/50 hover:bg-white text-gray-700 border border-black/5 flex items-center justify-center shadow-sm transition-all"
+          @click.stop="window.open(externalUrl, '_blank')"
+          title="Visit"
+        >
+          <ExternalLink class="w-4 h-4" />
+        </button>
 
-      <!-- STOPPED: START -->
-      <button
-        v-else-if="project.status !== 'running'"
-        class="w-10 h-10 rounded-full bg-black text-white flex items-center justify-center shadow-lg hover:bg-gray-800 hover:scale-105 transition-all"
-        @click.stop="$emit('action', project.id, 'start')"
-      >
-        <Play class="w-4 h-4 fill-current ml-0.5" />
-      </button>
+        <!-- Restart Button -->
+        <button 
+          v-if="['running', 'online'].includes(project.status)"
+          class="w-9 h-9 rounded-xl bg-white text-gray-700 border border-black/5 flex items-center justify-center shadow-sm transition-all hover:bg-gray-50"
+          @click.stop="$emit('action', project.id, 'restart')"
+          title="Restart"
+        >
+          <RefreshCw class="w-4 h-4" />
+        </button>
 
-      <!-- RUNNING: STOP -->
-      <button
-        v-else
-        class="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center shadow-lg hover:bg-gray-100 hover:scale-105 transition-all"
-        @click.stop="$emit('action', project.id, 'stop')"
-      >
-        <Square class="w-4 h-4 fill-current" />
-      </button>
+        <!-- DRAFT: RESUME -->
+        <button
+          v-if="project.status === 'draft'"
+          class="w-10 h-10 rounded-full bg-white text-gray-600 border border-gray-200 flex items-center justify-center shadow-sm hover:bg-gray-50 hover:scale-105 transition-all"
+          @click.stop="$emit('action', project.id, 'resume')"
+          title="Resume Setup"
+        >
+          <Activity class="w-4 h-4" />
+        </button>
+
+        <!-- STOPPED: START -->
+        <button
+          v-else-if="!['running', 'online', 'building', 'deploying'].includes(project.status)"
+          class="w-10 h-10 rounded-full bg-black text-white flex items-center justify-center shadow-lg hover:bg-gray-800 hover:scale-105 transition-all"
+          @click.stop="$emit('action', project.id, 'start')"
+          title="Start"
+        >
+          <Play class="w-4 h-4 fill-current ml-0.5" />
+        </button>
+
+        <!-- RUNNING: STOP -->
+        <button
+          v-else-if="['running', 'online'].includes(project.status)"
+          class="w-10 h-10 rounded-full bg-white text-red-600 border border-red-50 flex items-center justify-center shadow-lg hover:bg-red-50 hover:scale-105 transition-all"
+          @click.stop="$emit('action', project.id, 'stop')"
+          title="Stop"
+        >
+          <Power class="w-4 h-4" />
+        </button>
+      </div>
     </div>
   </div>
 </template>

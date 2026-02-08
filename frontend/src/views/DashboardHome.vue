@@ -18,8 +18,10 @@ import {
   Trash2,
 } from "lucide-vue-next";
 import { pb } from "@/lib/pocketbase";
+import { useSearchStore } from "@/stores/search";
 
 const router = useRouter();
+const searchStore = useSearchStore();
 const projects = ref([]);
 const activeTab = ref("application"); // Default tab
 const filter = ref("all");
@@ -35,6 +37,7 @@ const loadProjects = async () => {
     ]);
 
     // Trust the Backend Source of Truth
+    console.log("DEBUG: Raw Projects from Backend:", projectRes);
     projects.value = projectRes || [];
 
   } catch (err) {
@@ -82,6 +85,12 @@ const filteredProjects = computed(() => {
   // 2. Filter by Status (Pill)
   if (filter.value !== "all") {
     items = items.filter((p) => p.status === filter.value);
+  }
+
+  // 3. Filter by Search Query
+  if (searchStore.query) {
+    const q = searchStore.query.toLowerCase();
+    items = items.filter(p => p.name.toLowerCase().includes(q));
   }
   
   return items;
@@ -247,6 +256,17 @@ onUnmounted(() => {
             >
               Running
             </button>
+            <button
+              class="px-5 py-2.5 rounded-full text-sm font-semibold transition-all border shrink-0"
+              :class="
+                filter === 'draft'
+                  ? 'bg-orange-50 text-orange-600 border-orange-100'
+                  : 'bg-white text-gray-500 hover:bg-gray-50 border-gray-200'
+              "
+              @click="filter = 'draft'"
+            >
+              Drafts
+            </button>
  
             <!-- PRUNE BUTTON -->
             <button
@@ -314,11 +334,6 @@ onUnmounted(() => {
   </DashboardLayout>
 </template>
 
-<style scoped>
-.dashed-border {
-  background-image: url("data:image/svg+xml,%3csvg width='100%25' height='100%25' xmlns='http://www.w3.org/2000/svg'%3e%3crect width='100%25' height='100%25' fill='none' rx='32' ry='32' stroke='%23D1D5DBFF' stroke-width='2' stroke-dasharray='12%2c 12' stroke-dashoffset='0' stroke-linecap='square'/%3e%3c/svg%3e");
-}
-</style>
 <style scoped>
 .dashed-border {
   background-image: url("data:image/svg+xml,%3csvg width='100%25' height='100%25' xmlns='http://www.w3.org/2000/svg'%3e%3crect width='100%25' height='100%25' fill='none' rx='32' ry='32' stroke='%23D1D5DBFF' stroke-width='2' stroke-dasharray='12%2c 12' stroke-dashoffset='0' stroke-linecap='square'/%3e%3c/svg%3e");

@@ -13,8 +13,10 @@ import {
     PieChart,
     PlusCircle
 } from 'lucide-vue-next';
+import { useSearchStore } from '@/stores/search';
 
 const auth = useAuthStore();
+const searchStore = useSearchStore();
 const router = useRouter();
 const route = useRoute();
 
@@ -96,8 +98,14 @@ const navItems = [
             <!-- Right Actions -->
             <div class="flex items-center gap-2 bg-[#F3F2EE] p-1.5 rounded-full">
                 <!-- Search -->
-                <div class="relative px-2">
+                <div class="flex items-center px-3 gap-2">
                     <Search class="w-4 h-4 text-gray-400" />
+                    <input 
+                        v-model="searchStore.query"
+                        type="text" 
+                        placeholder="Search projects..." 
+                        class="bg-transparent border-none outline-none text-sm w-40 focus:w-64 transition-all duration-300 placeholder:text-gray-400"
+                    />
                 </div>
                 
                 <div class="h-4 w-[1px] bg-gray-300 mx-1"></div>

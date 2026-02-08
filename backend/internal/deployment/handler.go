@@ -1,7 +1,9 @@
 package deployment
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/labstack/echo/v5"
@@ -29,6 +31,7 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.POST("/deploy/prune", h.handlePruneProjects)
 	g.POST("/deploy/adopt", h.handleAdoptProject)
 	g.GET("/deploy/:id/logs", h.handleGetLogs)
+	g.GET("/deploy/:id/logs/stream", h.handleStreamLogs)
 	g.POST("/deploy/:id/action", h.handleProjectAction)
 	g.POST("/webhook/redeploy", h.handleWebhookRedeploy)
 }
@@ -154,6 +157,65 @@ func (h *Handler) handleGetLogs(c echo.Context) error {
 		return apis.NewBadRequestError("Failed to fetch logs", err)
 	}
 	return c.JSON(200, map[string]string{"logs": logs})
+}
+
+func (h *Handler) handleStreamLogs(c echo.Context) error {
+	id := c.PathParam("id")
+
+	// 1. Set Headers for SSE
+	c.Response().Header().Set(echo.HeaderContentType, "text/event-stream")
+	c.Response().Header().Set(echo.HeaderCacheControl, "no-cache")
+	c.Response().Header().Set(echo.HeaderConnection, "keep-alive")
+
+	// 2. Get the stream
+	stream, err := h.service.StreamLogs(c.Request().Context(), id)
+	if err != nil {
+		// If error, we can send a JSON error, but for SSE usually we want to respect the stream
+		// Let's return 400 before flushing any data
+		return apis.NewBadRequestError("Failed to open log stream", err)
+	}
+	defer stream.Close()
+
+	// 3. Prepare Scanner
+	reader := bufio.NewReader(stream)
+
+	// 4. Stream Loop
+	for {
+		// Check context cancellation (Client disconnect)
+		select {
+		case <-c.Request().Context().Done():
+			return nil
+		default:
+		}
+
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			// Other error? Maybe stop
+			break
+		}
+
+		// Clean line (Docker adds some headers in raw stream, but using Stdout/Stderr logs options usually handles it well enough for text)
+		// Actually, Docker API raw stream has 8-byte header per frame [STREAM_TYPE, 0, 0, 0, SIZE, SIZE, SIZE, SIZE]
+		// But s.cli.ContainerLogs handles that if we use Stdout=true (wrapper usually strips it?)
+		// Wait, docker client.ContainerLogs returns a multiplexed stream usually involving stdcopy.StdCopy
+		// But in our container service we returned `s.cli.ContainerLogs`.
+		// If `TTY` is allocated, it's raw text. If not, it's multiplexed.
+		// For simplicity, let's assume raw text or clean it in frontend if garbage appears.
+		// Usually official go-docker client handles the demux partially or returns the raw reader.
+		// Let's send as is.
+
+		// SSE Format: "data: <payload>\n\n"
+		msg := fmt.Sprintf("data: %s\n\n", strings.TrimSpace(line))
+		if _, err := fmt.Fprint(c.Response(), msg); err != nil {
+			return nil
+		}
+		c.Response().Flush()
+	}
+
+	return nil
 }
 
 func (h *Handler) handlePruneProjects(c echo.Context) error {

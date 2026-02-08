@@ -136,7 +136,7 @@ const loadProject = async (silent = false) => {
 
       // If we are on logs tab, load logs too
       if (activeTab.value === "logs") {
-        loadLogs();
+        connectLogStream();
       }
     } else {
       project.value = await pb.collection("projects").getOne(id);
@@ -148,17 +148,61 @@ const loadProject = async (silent = false) => {
   }
 };
 
-const loadLogs = async () => {
+// Log Streaming State
+let logEventSource = null;
+const isStreaming = ref(false);
+
+const connectLogStream = () => {
   if (!project.value) return;
-  logsLoading.value = true;
-  try {
-    const res = await pb.send(`/api/senvanda/deploy/${project.value.id}/logs`);
-    logs.value = res.logs || "No logs available for this container.";
-  } catch (err) {
-    logs.value = "Failed to fetch logs: " + err.message;
-  } finally {
-    logsLoading.value = false;
+  
+  // Close existing
+  if (logEventSource) {
+    logEventSource.close();
   }
+
+  logs.value = ""; // Clear buffer
+  logsLoading.value = true;
+  isStreaming.value = true;
+
+  // Use relative path for SSE
+  const url = `/api/senvanda/deploy/${project.value.id}/logs/stream`;
+  
+  logEventSource = new EventSource(url);
+
+  logEventSource.onmessage = (event) => {
+    logsLoading.value = false;
+    // event.data contains the log line
+    logs.value += event.data + "\n";
+    
+    // Auto-scroll (Simple implementation)
+    const el = document.getElementById("terminal-output");
+    if (el) {
+      el.scrollTop = el.scrollHeight;
+    }
+  };
+
+  logEventSource.onerror = (err) => {
+    // If connection closes (EOF), browser might try to reconnect
+    // We can handle it or just let it be. 
+    // Usually invalid state (0=connecting, 1=open, 2=closed)
+    if (logEventSource.readyState === 2) {
+       isStreaming.value = false;
+    }
+    // Optional: console.error("Stream error", err);
+  };
+  
+  logEventSource.onopen = () => {
+      logsLoading.value = false;
+      isStreaming.value = true;
+  };
+};
+
+const disconnectLogStream = () => {
+  if (logEventSource) {
+    logEventSource.close();
+    logEventSource = null;
+  }
+  isStreaming.value = false;
 };
 
 const copyToClipboard = (text) => {
@@ -269,7 +313,11 @@ const deleteProject = async () => {
 
 import { watch, onUnmounted } from "vue";
 watch(activeTab, (newTab) => {
-  if (newTab === "logs") loadLogs();
+  if (newTab === "logs") {
+    connectLogStream();
+  } else {
+    disconnectLogStream();
+  }
 });
 
 onMounted(() => {
@@ -286,6 +334,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   pb.collection("projects").unsubscribe(route.params.id);
+  disconnectLogStream();
 });
 </script>
 
@@ -653,35 +702,62 @@ onUnmounted(() => {
         >
           <div class="flex justify-between items-center">
             <h3 class="font-bold text-gray-800 flex items-center gap-2">
-              <Terminal class="w-4 h-4" /> Live Output
+              <Terminal class="w-4 h-4" /> 
+              Live Output 
+              <span v-if="isStreaming" class="flex h-2 w-2 relative ml-2" title="Live Streaming">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+              </span>
+              <span v-else class="text-xs text-gray-400 font-normal ml-2">(Disconnected)</span>
             </h3>
-            <Button
-              size="sm"
-              variant="outline"
-              class="h-8 rounded-xl gap-2"
-              @click="loadLogs"
-              :disabled="logsLoading"
-            >
-              <RefreshCw
-                class="w-3 h-3"
-                :class="{ 'animate-spin': logsLoading }"
-              />
-              Refresh Logs
-            </Button>
+            
+            <div class="flex gap-2">
+                <Button 
+                    v-if="!isStreaming"
+                    size="sm" 
+                    variant="outline" 
+                    class="h-8 rounded-xl gap-2"
+                    @click="connectLogStream"
+                >
+                    <Play class="w-3 h-3" /> Connect
+                </Button>
+                <Button 
+                    v-else
+                    size="sm" 
+                    variant="outline" 
+                    class="h-8 rounded-xl gap-2 hover:bg-red-50 hover:text-red-500 hover:border-red-200"
+                    @click="disconnectLogStream"
+                >
+                    <Square class="w-3 h-3" /> Stop
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  class="h-8 rounded-xl gap-2"
+                  @click="logs = ''"
+                >
+                  <RefreshCw class="w-3 h-3" /> Clear
+                </Button>
+            </div>
           </div>
+          
           <div
-            class="bg-black text-emerald-500 p-6 rounded-[2rem] font-mono text-xs h-[550px] overflow-y-auto shadow-2xl border border-gray-800 selection:bg-emerald-500/30"
+            id="terminal-output"
+            class="bg-[#0D1117] text-green-400 p-6 rounded-[2rem] font-mono text-[11px] leading-relaxed h-[550px] overflow-y-auto shadow-2xl border border-gray-800/50 selection:bg-green-500/30 scroll-smooth"
           >
             <div
               v-if="logsLoading && !logs"
-              class="flex items-center gap-2 opacity-50"
+              class="flex items-center gap-2 opacity-50 mb-4"
             >
-              <Loader2 class="w-3 h-3 animate-spin" /> Fetching stream...
+              <Loader2 class="w-3 h-3 animate-spin" /> Connecting to stream...
             </div>
-            <pre class="whitespace-pre-wrap">{{ logs }}</pre>
-            <div v-if="!logsLoading && !logs" class="text-gray-500 italic">
-              No log output detected from container.
+            
+            <pre class="whitespace-pre-wrap font-mono">{{ logs }}</pre>
+            
+            <div v-if="!isStreaming" class="text-gray-600 italic mt-2 border-t border-gray-800 pt-2">
+              > Stream disconnected.
             </div>
+             <span v-if="isStreaming" class="inline-block w-1.5 h-3 bg-green-500 animate-pulse align-middle ml-0.5 shadow-[0_0_8px_rgba(34,197,94,0.8)]"></span>
           </div>
         </div>
         <!-- AUTOMATION TAB -->

@@ -177,6 +177,18 @@ func main() {
 			})
 		})
 
+		// TEST: Wipe Database (Dangerous, use only for cleanup)
+		apiGroup.POST("/test/wipe", func(c echo.Context) error {
+			records, err := app.Dao().FindRecordsByFilter("projects", "id != ''", "", 1000, 0, nil)
+			if err != nil {
+				return c.JSON(500, map[string]string{"error": err.Error()})
+			}
+			for _, r := range records {
+				app.Dao().DeleteRecord(r)
+			}
+			return c.JSON(http.StatusOK, map[string]string{"message": "Database wiped clean!"})
+		})
+
 		// TEST: Add Dummy Domain
 		// POST /api/senvanda/test-caddy?domain=test.local&target=1.1.1.1:80
 		apiGroup.POST("/test-caddy", func(c echo.Context) error {
