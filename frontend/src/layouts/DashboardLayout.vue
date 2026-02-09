@@ -11,7 +11,8 @@ import {
     Bell,
     Users,
     PieChart,
-    PlusCircle
+    PlusCircle,
+    Store
 } from 'lucide-vue-next';
 import { useSearchStore } from '@/stores/search';
 
@@ -28,6 +29,7 @@ const logout = () => {
 const navItems = [
     { name: 'Dashboard', path: '/', icon: LayoutDashboard },
     { name: 'Projects', path: '/projects', icon: Box },
+    { name: 'Marketplace', path: '/marketplace', icon: Store },
     { name: 'Analytics', path: '/analytics', icon: PieChart },
     { name: 'Team', path: '/team', icon: Users },
     { name: 'Settings', path: '/settings', icon: Settings },

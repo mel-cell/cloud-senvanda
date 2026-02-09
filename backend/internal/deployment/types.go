@@ -26,6 +26,14 @@ type Service interface {
 	StreamLogs(ctx context.Context, id string) (io.ReadCloser, error)
 	GetProjectStats(ctx context.Context, id string) (*ProjectStats, error)
 	GetClusterStats(ctx context.Context) (*ClusterStats, error)
+	DeployMarketplace(ctx context.Context, req MarketplaceRequest) (*models.Record, error) // NEW
+}
+
+type MarketplaceRequest struct {
+	ItemID   string `json:"itemId"`   // e.g. postgres, redis
+	Name     string `json:"name"`     // e.g. my-db
+	Port     int    `json:"port"`     // Optional custom port
+	Category string `json:"category"` // vm or other
 }
 
 type ClusterStats struct {

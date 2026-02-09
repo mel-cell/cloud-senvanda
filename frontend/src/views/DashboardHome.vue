@@ -81,7 +81,10 @@ const filteredProjects = computed(() => {
 
   // 1. Filter by Category (Only if not searching)
   if (!searchStore.query) {
-      items = items.filter(p => (p.category || 'discovered') === activeTab.value);
+      items = items.filter(p => {
+          const pCat = p.category || 'application';
+          return pCat === activeTab.value;
+      });
   }
 
   // 2. Filter by Status (Pill)
@@ -230,7 +233,7 @@ onUnmounted(() => {
         <div class="flex flex-col gap-2">
             <div class="flex items-center gap-1 bg-gray-100/50 p-1 rounded-full w-fit border border-gray-200" :class="{ 'opacity-50 pointer-events-none': searchStore.query }">
                  <button 
-                    v-for="tab in ['application', 'infrastructure']" 
+                    v-for="tab in ['application', 'vm', 'infrastructure', 'other']" 
                     :key="tab"
                     @click="activeTab = tab"
                     class="px-6 py-2 rounded-full text-sm font-bold transition-all capitalize flex items-center gap-2"
@@ -348,8 +351,19 @@ onUnmounted(() => {
         </template>
         
         <!-- Empty State -->
-        <div v-if="!loading && filteredProjects.length === 0 && activeTab !== 'application'" class="col-span-full py-10 text-center text-gray-400 italic">
-            No items found in {{ activeTab }}.
+        <div v-if="!loading && filteredProjects.length === 0 && activeTab !== 'application'" class="col-span-full py-20 flex flex-col items-center justify-center text-center animate-in fade-in zoom-in duration-500">
+             <div class="w-20 h-20 rounded-[2rem] bg-gray-50 flex items-center justify-center mb-6 border border-gray-100 shadow-sm">
+                <Box class="w-10 h-10 text-gray-300" />
+             </div>
+             <h3 class="text-xl font-bold text-gray-900">No {{ activeTab }} found</h3>
+             <p class="text-gray-400 mt-2 max-w-xs mx-auto text-sm leading-relaxed">It looks like you haven't deployed any {{ activeTab }} yet. Start by exploring the marketplace.</p>
+             
+             <button 
+                @click="$router.push('/marketplace')"
+                class="mt-8 px-6 py-3 bg-white border border-gray-200 rounded-2xl text-sm font-bold hover:bg-black hover:text-white hover:border-black transition-all shadow-sm"
+             >
+                Go to Marketplace
+             </button>
         </div>
       </div>
     </div>

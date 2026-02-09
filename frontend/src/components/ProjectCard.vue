@@ -1,7 +1,7 @@
 <script setup>
 import { computed } from "vue";
 import { useRouter } from "vue-router";
-import { Play, Square, MoreHorizontal, Globe, Activity, RefreshCw, ExternalLink, Power, Box } from "lucide-vue-next";
+import { Play, Square, MoreHorizontal, Globe, Activity, RefreshCw, ExternalLink, Power, Box, Monitor, Server, Database } from "lucide-vue-next";
 
 const props = defineProps({
   project: {
@@ -13,8 +13,17 @@ const props = defineProps({
 const emit = defineEmits(["action"]);
 const router = useRouter(); // Use Router
 
+const categoryConfig = computed(() => {
+    switch (props.project.category) {
+        case 'vm': return { label: 'VM', icon: Monitor, color: 'text-purple-600 bg-purple-100/50' };
+        case 'infrastructure': return { label: 'Infra', icon: Server, color: 'text-emerald-600 bg-emerald-100/50' };
+        case 'other': return { label: 'Other', icon: Database, color: 'text-blue-600 bg-blue-100/50' };
+        default: return { label: 'App', icon: Globe, color: 'text-gray-600 bg-gray-100/50' };
+    }
+});
+
 const navigateToDetail = () => {
-  router.push(`/projects/${props.project.id}`);
+    router.push(`/projects/${props.project.id}`);
 };
 
 // Pastel Color Map mimicking the reference image
@@ -128,12 +137,20 @@ const formattedDate = computed(() => {
         </h3>
       </div>
 
-      <button
-        class="w-8 h-8 rounded-full bg-white/50 hover:bg-white flex items-center justify-center transition-colors"
-        @click.stop
-      >
-        <MoreHorizontal class="w-4 h-4 opacity-50" />
-      </button>
+      <div class="flex items-center gap-2">
+          <!-- Category Badge -->
+          <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-black/5 shadow-sm text-[10px] font-bold uppercase tracking-wider" :class="categoryConfig.color">
+              <component :is="categoryConfig.icon" class="w-3 h-3" />
+              {{ categoryConfig.label }}
+          </div>
+
+          <button
+            class="w-8 h-8 rounded-full bg-white/50 hover:bg-white flex items-center justify-center transition-colors"
+            @click.stop
+          >
+            <MoreHorizontal class="w-4 h-4 opacity-50" />
+          </button>
+      </div>
     </div>
 
     <!-- Middle: Metric / Info -->

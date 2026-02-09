@@ -6,6 +6,8 @@ import (
 	"os"
 
 	"github.com/labstack/echo/v5"
+	"github.com/pocketbase/pocketbase/apis"
+	"github.com/pocketbase/pocketbase/models"
 )
 
 type DeploymentHandler struct {
@@ -73,6 +75,72 @@ func (h *DeploymentHandler) HandleDeployFinal(c echo.Context) error {
 	})
 }
 
+func (h *DeploymentHandler) HandleAction(c echo.Context) error {
+	// 1. Security Check (Secret OR PocketBase Auth)
+	secret := c.Request().Header.Get("X-Senvanda-Secret")
+	isAuthorized := false
+
+	if secret != "" && secret == os.Getenv("SENVANDA_SHARED_SECRET") {
+		isAuthorized = true
+	} else {
+		// Check PocketBase Auth
+		authRecord, _ := c.Get(apis.ContextAuthRecordKey).(*models.Record)
+		admin, _ := c.Get(apis.ContextAdminKey).(*models.Admin)
+		if authRecord != nil || admin != nil {
+			isAuthorized = true
+		}
+	}
+
+	if !isAuthorized {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
+
+	id := c.PathParam("id")
+	action := c.QueryParam("action")
+	force := c.QueryParam("force") == "true"
+
+	project, err := h.service.app.Dao().FindRecordById("projects", id)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "project not found"})
+	}
+
+	log.Printf("🕹️ Action received: %s for %s", action, project.GetString("name"))
+
+	switch action {
+	case "stop":
+		if err := h.service.StopProject(project); err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+	case "delete":
+		if err := h.service.DeleteProject(project); err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+	case "redeploy":
+		if force {
+			// Trigger build again from source
+			branch := project.GetString("settings.branch")
+			if branch == "" {
+				branch = "main"
+			}
+			if err := h.service.TriggerBuildPipeline(project, branch); err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			}
+		} else {
+			// Just re-run the current image
+			image := project.GetString("image")
+			if image == "" {
+				return c.JSON(http.StatusBadRequest, map[string]string{"error": "no image found to redeploy"})
+			}
+			go h.service.DeployUserApp(project, image)
+		}
+	default:
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid action"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"message": "Action executed successfully"})
+}
+
 func (h *DeploymentHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/deploy-final", h.HandleDeployFinal)
+	g.POST("/project/:id/action", h.HandleAction)
 }

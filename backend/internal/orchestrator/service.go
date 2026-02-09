@@ -74,15 +74,21 @@ func (s *Service) DeployUserApp(project *models.Record, imageTag string) error {
 	ctx := context.Background() // Background context for the long-running process
 	projectName := project.GetString("name")
 
-	// Default to project name if no domain specified, assuming local dev environment for now
-	// In production, this would be retrieved from project record
-	domain := fmt.Sprintf("%s.senvanda.local", projectName)
-
 	// Phase 1: Preparation
 	log.Printf("🚀 Starting deployment for %s...", projectName)
 	project.Set("status", "deploying")
 	project.Set("current_action", "🚀 Initializing deployment...")
 	s.app.Dao().SaveRecord(project)
+
+	// Determine Domain
+	domain := fmt.Sprintf("%s.senvanda.local", projectName)
+	if settingsData := project.Get("settings"); settingsData != nil {
+		if settings, ok := settingsData.(map[string]interface{}); ok {
+			if d, ok := settings["domain"].(string); ok && d != "" {
+				domain = d
+			}
+		}
+	}
 
 	// Phase 2: Docker Action
 	containerName := fmt.Sprintf("senvanda-app-%s", projectName)
@@ -92,7 +98,7 @@ func (s *Service) DeployUserApp(project *models.Record, imageTag string) error {
 	log.Printf("📦 Pulling image: %s", imageTag)
 	project.Set("current_action", "📦 Pulling latest docker image...")
 	s.app.Dao().SaveRecord(project)
-	
+
 	if err := s.dockerClient.PullImage(ctx, imageTag); err != nil {
 		s.markFailed(project, fmt.Sprintf("Failed to pull image: %v", err))
 		return err
@@ -170,7 +176,7 @@ func (s *Service) DeployUserApp(project *models.Record, imageTag string) error {
 	project.Set("current_action", "📡 Configuring secure proxy...")
 	s.app.Dao().SaveRecord(project)
 
-	if err := s.caddyClient.AddLinkDomain(domain, target); err != nil {
+	if err := s.caddyClient.AddLinkDomain(project.Id, domain, target); err != nil {
 		s.markFailed(project, fmt.Sprintf("Failed to configure Caddy: %v", err))
 		return err
 	}
@@ -188,6 +194,44 @@ func (s *Service) DeployUserApp(project *models.Record, imageTag string) error {
 
 	log.Printf("🎉 Deployment for %s completed successfully!", projectName)
 	return nil
+}
+
+// StopProject stops and removes the project container and its networking
+func (s *Service) StopProject(project *models.Record) error {
+	ctx := context.Background()
+	projectName := project.GetString("name")
+	containerName := fmt.Sprintf("senvanda-app-%s", projectName)
+
+	log.Printf("🛑 Stopping project: %s", projectName)
+	project.Set("status", "stopped")
+	project.Set("current_action", "🛑 Stopping containers...")
+	s.app.Dao().SaveRecord(project)
+
+	// 1. Remove Container
+	if err := s.dockerClient.RemoveContainer(ctx, containerName); err != nil {
+		log.Printf("⚠️ Warning: could not remove container %s: %v", containerName, err)
+	}
+
+	// 2. Remove Caddy Route
+	if err := s.caddyClient.RemoveRoute(project.Id); err != nil {
+		log.Printf("⚠️ Warning: could not remove Caddy route for %s: %v", projectName, err)
+	}
+
+	project.Set("current_action", "")
+	return s.app.Dao().SaveRecord(project)
+}
+
+// DeleteProject performs a full cleanup and removes the record from DB
+func (s *Service) DeleteProject(project *models.Record) error {
+	log.Printf("🗑️ Deleting project: %s", project.GetString("name"))
+
+	// 1. Stop and Cleanup Infrastructure
+	if err := s.StopProject(project); err != nil {
+		log.Printf("⚠️ Warning: StopProject failed during deletion: %v", err)
+	}
+
+	// 2. Remove from DB
+	return s.app.Dao().DeleteRecord(project)
 }
 
 func (s *Service) markFailed(project *models.Record, reason string) {

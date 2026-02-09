@@ -197,7 +197,7 @@ func main() {
 			if domain == "" || target == "" {
 				return c.JSON(http.StatusBadRequest, map[string]string{"error": "missing domain or target"})
 			}
-			if err := caddyClient.AddLinkDomain(domain, target); err != nil {
+			if err := caddyClient.AddLinkDomain("test", domain, target); err != nil {
 				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			}
 			return c.JSON(http.StatusOK, map[string]string{"message": "Route added to Caddy!"})

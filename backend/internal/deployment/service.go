@@ -647,6 +647,79 @@ func extractNameFromUrl(url string) string {
 	return strings.TrimSuffix(last, ".git")
 }
 
+func (s *service) DeployMarketplace(ctx context.Context, req MarketplaceRequest) (*models.Record, error) {
+	// 1. Map Item to Config
+	var image string
+	var defaultEnvs []EnvVar
+	var port int = req.Port
+
+	switch req.ItemID {
+	case "postgres":
+		image = "postgres:latest"
+		if port == 0 {
+			port = 5432
+		}
+		defaultEnvs = []EnvVar{{Key: "POSTGRES_PASSWORD", Value: "senvanda"}}
+	case "redis":
+		image = "redis:alpine"
+		if port == 0 {
+			port = 6379
+		}
+	case "mysql":
+		image = "mysql:latest"
+		if port == 0 {
+			port = 3306
+		}
+		defaultEnvs = []EnvVar{{Key: "MYSQL_ROOT_PASSWORD", Value: "senvanda"}}
+	case "nginx":
+		image = "nginx:alpine"
+		if port == 0 {
+			port = 80
+		}
+	case "ubuntu-vps":
+		image = "ubuntu:latest"
+		if port == 0 {
+			port = 22
+		}
+	default:
+		return nil, fmt.Errorf("unknown marketplace item: %s", req.ItemID)
+	}
+
+	// 2. Create Project Record
+	collection, _ := s.app.Dao().FindCollectionByNameOrId("projects")
+	record := models.NewRecord(collection)
+	record.Set("name", req.Name)
+	record.Set("image", image)
+	record.Set("port", port)
+	record.Set("category", req.Category)
+	record.Set("status", "running")
+
+	user, _ := s.FindFirstUser(ctx)
+	if user != nil {
+		record.Set("user", user.Id)
+	}
+
+	settings := ProjectSettings{
+		EnvVars: defaultEnvs,
+		Branch:  "main",
+	}
+	record.Set("settings", settings)
+	record.Set("webhookToken", s.cicd.GenerateWebhookToken())
+
+	if err := s.app.Dao().SaveRecord(record); err != nil {
+		return nil, err
+	}
+
+	// 3. Trigger Deployment Action
+	// We use the existing "redeploy" logic via ActionProject inside a goroutine to not block
+	go func() {
+		ctx := context.Background()
+		_ = s.ActionProject(ctx, record.Id, "redeploy")
+	}()
+
+	return record, nil
+}
+
 func (s *service) GetClusterStats(ctx context.Context) (*ClusterStats, error) {
 	// 1. Get all active projects
 	allProjects, err := s.GetProjectsWithStatus(ctx)

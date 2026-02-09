@@ -26,22 +26,14 @@ func NewClient(baseURL string) *Client {
 }
 
 // AddLinkDomain menambahkan domain baru yang mengarah ke target internal (IP:Port)
-// Payload Caddy ini sedikit kompleks karena strukturnya nested.
-// Kita inject route ini ke dalam http server pertama (index 0).
-func (c *Client) AddLinkDomain(domain string, target string) error {
-	// Construct Caddy Route JSON Payload structure
-	// Ini merepresentasikan satu blok routing:
-	// "match host" -> "handle reverse proxy"
-
-	// Target format: "172.18.0.x:8080"
-
-	routeID := fmt.Sprintf("route-%s", domain)
+func (c *Client) AddLinkDomain(projectID string, domain string, target string) error {
+	routeID := fmt.Sprintf("project-%s", projectID)
 
 	payload := map[string]interface{}{
 		"@id": routeID, // ID unik agar bisa diedit/hapus nanti
 		"match": []map[string]interface{}{
 			{
-				"host": []string{domain},
+				"host": []string{domain, domain + ":9080"},
 			},
 		},
 		"handle": []map[string]interface{}{
@@ -63,20 +55,15 @@ func (c *Client) AddLinkDomain(domain string, target string) error {
 		},
 	}
 
+	// Step 1: Hapus rute lama jika ada (berdasarkan ID)
+	c.RemoveRoute(projectID)
+
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
 
-	// API Endpoint untuk menambah route ke server HTTP (biasanya server "srv0")
-	// Kita gunakan PUT untuk menambah/update route spesifik atau POST ke routes array.
-	// Untuk keamanan, kita POST ke queue routes di server http default.
-	// Path: /config/apps/http/servers/srv0/routes
-
-	// NAMUN, karena kita pakai Caddyfile sebagai base, nama servernya mungkin random jika auto-generated,
-	// atau kita perlu memastikan nama server di Caddyfile config yang dihasilkannya.
-	// Biasanya server default dari Caddyfile adapter diberi nama "srv0".
-
+	// Step 2: Tambahkan rute baru ke server default (srv0)
 	url := fmt.Sprintf("%s/config/apps/http/servers/srv0/routes", c.BaseURL)
 
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
@@ -91,7 +78,31 @@ func (c *Client) AddLinkDomain(domain string, target string) error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != 200 && resp.StatusCode != 201 {
+		return fmt.Errorf("caddy api returned status: %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+// RemoveRoute menghapus route berdasarkan ID project
+func (c *Client) RemoveRoute(projectID string) error {
+	routeID := fmt.Sprintf("project-%s", projectID)
+	url := fmt.Sprintf("%s/id/%s", c.BaseURL, routeID)
+
+	req, err := http.NewRequest("DELETE", url, nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	// 404 is fine, means already gone
+	if resp.StatusCode != 200 && resp.StatusCode != 204 && resp.StatusCode != 404 {
 		return fmt.Errorf("caddy api returned status: %d", resp.StatusCode)
 	}
 

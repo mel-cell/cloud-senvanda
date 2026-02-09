@@ -37,6 +37,7 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.POST("/deploy/:id/action", h.handleProjectAction)
 	g.POST("/webhook/redeploy", h.handleWebhookRedeploy)
 	g.GET("/deploy/info", h.handleGetInfo)
+	g.POST("/deploy/marketplace", h.handleDeployMarketplace)
 }
 
 func (h *Handler) handleGetInfo(c echo.Context) error {
@@ -51,6 +52,20 @@ func (h *Handler) handleGetInfo(c echo.Context) error {
 		"containers":     info.Containers,
 		"running":        info.ContainersRunning,
 	})
+}
+
+func (h *Handler) handleDeployMarketplace(c echo.Context) error {
+	var req MarketplaceRequest
+	if err := c.Bind(&req); err != nil {
+		return apis.NewBadRequestError("Invalid request body", err)
+	}
+
+	record, err := h.service.DeployMarketplace(c.Request().Context(), req)
+	if err != nil {
+		return apis.NewBadRequestError("Deployment failed", err)
+	}
+
+	return c.JSON(200, record)
 }
 
 func (h *Handler) handleGetClusterStats(c echo.Context) error {
