@@ -31,6 +31,7 @@ type Service interface {
 	BuildImage(ctx context.Context, contextPath string, tag string) error
 	ContainerExists(ctx context.Context, name string) (bool, error)
 	GetStats(ctx context.Context, name string) (*ContainerMetrics, error)
+	ExecContainer(ctx context.Context, name string, cmd []string) (types.HijackedResponse, error)
 }
 
 type ContainerMetrics struct {
@@ -335,4 +336,23 @@ func (s *service) ContainerExists(ctx context.Context, name string) (bool, error
 		return false, nil
 	}
 	return false, err
+}
+
+func (s *service) ExecContainer(ctx context.Context, name string, cmd []string) (types.HijackedResponse, error) {
+	execConfig := container.ExecOptions{
+		AttachStdin:  true,
+		AttachStdout: true,
+		AttachStderr: true,
+		Tty:          true,
+		Cmd:          cmd,
+	}
+
+	execID, err := s.cli.ContainerExecCreate(ctx, name, execConfig)
+	if err != nil {
+		return types.HijackedResponse{}, err
+	}
+
+	return s.cli.ContainerExecAttach(ctx, execID.ID, container.ExecStartOptions{
+		Tty: true,
+	})
 }

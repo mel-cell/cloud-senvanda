@@ -1,5 +1,8 @@
 <script setup>
-import { ref, reactive, onMounted, computed } from "vue";
+import { ref, reactive, onMounted, computed, watch, onUnmounted, nextTick } from "vue";
+import { Terminal as XermTerminal } from "xterm";
+import { FitAddon } from "xterm-addon-fit";
+import "xterm/css/xterm.css";
 import { useRoute, useRouter } from "vue-router";
 import DashboardLayout from "@/layouts/DashboardLayout.vue";
 import { Button } from "@/components/ui/button";
@@ -79,6 +82,9 @@ const availableTabs = computed(() => {
     const tabs = ["overview", "logs", "automation"];
     if (project.value?.category === 'other' || project.value?.category === 'vm') {
         tabs.push("connect");
+    }
+    if (project.value?.status === 'running' || project.value?.status === 'online') {
+        tabs.push("terminal");
     }
     tabs.push("settings");
     return tabs;
@@ -296,11 +302,76 @@ const connectLogStream = () => {
 };
 
 const disconnectLogStream = () => {
-  if (logEventSource) {
-    logEventSource.close();
-    logEventSource = null;
-  }
   isStreaming.value = false;
+};
+
+// --- INTERACTIVE TERMINAL ---
+const terminalElement = ref(null);
+let xterm = null;
+let terminalWs = null;
+let fitAddon = null;
+
+const connectTerminal = () => {
+    if (!project.value || !terminalElement.value) return;
+
+    // Initialize xterm if not exists
+    if (!xterm) {
+        xterm = new XermTerminal({
+            cursorBlink: true,
+            theme: {
+                background: '#000000',
+                foreground: '#ffffff'
+            },
+            fontFamily: 'JetBrains Mono, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+            fontSize: 13
+        });
+        fitAddon = new FitAddon();
+        xterm.loadAddon(fitAddon);
+    }
+
+    xterm.open(terminalElement.value);
+    fitAddon.fit();
+    xterm.focus();
+
+    // Setup WebSocket
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host;
+    const terminalUrl = `${protocol}//${host}/api/senvanda/project/${project.value.id}/terminal`;
+
+    terminalWs = new WebSocket(terminalUrl);
+
+    terminalWs.onmessage = (ev) => {
+        if (typeof ev.data === 'string') {
+            xterm.write(ev.data);
+        } else {
+            const reader = new FileReader();
+            reader.onload = () => xterm.write(new Uint8Array(reader.result));
+            reader.readAsArrayBuffer(ev.data);
+        }
+    };
+
+    xterm.onData(data => {
+        if (terminalWs && terminalWs.readyState === WebSocket.OPEN) {
+            terminalWs.send(data);
+        }
+    });
+
+    terminalWs.onclose = () => {
+        xterm.write("\r\n\r\n\x1b[31m[Session Closed]\x1b[0m\r\n");
+    };
+
+    terminalWs.onerror = () => {
+        xterm.write("\r\n\r\n\x1b[31m[Connection Error]\x1b[0m\r\n");
+    };
+
+    window.addEventListener('resize', () => fitAddon.fit());
+};
+
+const disconnectTerminal = () => {
+    if (terminalWs) {
+        terminalWs.close();
+        terminalWs = null;
+    }
 };
 
 const copyToClipboard = (text) => {
@@ -420,12 +491,19 @@ const deleteProject = async () => {
   }
 };
 
-import { watch, onUnmounted } from "vue";
-watch(activeTab, (newTab) => {
+
+watch(activeTab, async (newTab) => {
   if (newTab === "logs") {
     connectLogStream();
   } else {
     disconnectLogStream();
+  }
+
+  if (newTab === "terminal") {
+    await nextTick();
+    connectTerminal();
+  } else {
+    disconnectTerminal();
   }
 });
 
@@ -615,6 +693,29 @@ onUnmounted(() => {
               </div>
            </div>
         </div>
+
+            <!-- TERMINAL (NEW) -->
+            <div v-show="activeTab === 'terminal'" class="space-y-4 animate-in zoom-in-95 duration-300">
+               <div class="flex justify-between items-center bg-white p-4 rounded-3xl border border-gray-100 shadow-sm">
+                  <div class="flex items-center gap-3">
+                     <div class="w-8 h-8 rounded-xl bg-black text-white flex items-center justify-center">
+                        <Terminal class="w-4 h-4" />
+                     </div>
+                     <h3 class="font-bold text-sm text-gray-700">Interactive Shell Session</h3>
+                  </div>
+                  <div class="flex items-center gap-4">
+                     <div class="hidden md:flex items-center gap-2 text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                        <span>Ctrl+C (Copy)</span>
+                        <span class="w-1 h-1 bg-gray-200 rounded-full"></span>
+                        <span>Ctrl+V (Paste)</span>
+                     </div>
+                     <span class="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg border border-blue-100 uppercase tracking-widest">Active Shell</span>
+                  </div>
+               </div>
+               <div class="bg-black p-4 rounded-[2.5rem] border border-gray-800 shadow-2xl h-[550px] overflow-hidden relative" ref="terminalElement">
+                  <!-- Term rendering via xterm.js -->
+               </div>
+            </div>
 
         <!-- AUTOMATION -->
         <div v-show="activeTab === 'automation'" class="space-y-6 animate-in slide-in-from-right-4 duration-500">

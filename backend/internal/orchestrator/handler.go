@@ -1,14 +1,23 @@
 package orchestrator
 
 import (
+	"io"
 	"log"
 	"net/http"
 	"os"
 
+	"github.com/docker/docker/api/types"
+	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v5"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/models"
 )
+
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool {
+		return true // In production, refine this
+	},
+}
 
 type DeploymentHandler struct {
 	service *Service
@@ -140,7 +149,58 @@ func (h *DeploymentHandler) HandleAction(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{"message": "Action executed successfully"})
 }
 
+func (h *DeploymentHandler) HandleTerminal(c echo.Context) error {
+	id := c.PathParam("id")
+	project, err := h.service.app.Dao().FindRecordById("projects", id)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "project not found"})
+	}
+
+	ws, err := upgrader.Upgrade(c.Response().Writer, c.Request(), nil)
+	if err != nil {
+		return err
+	}
+	defer ws.Close()
+
+	// Try common shells
+	shells := [][]string{{"/bin/bash"}, {"/bin/sh"}, {"sh"}}
+	var hijacked types.HijackedResponse
+	var execErr error
+
+	containerName := "senvanda-" + project.GetString("name")
+	
+	// Try to find active container ID or fallback to name
+	cid := project.GetString("containerId")
+	target := containerName
+	if cid != "" {
+		target = cid
+	}
+
+	for _, shell := range shells {
+		hijacked, execErr = h.service.DockerClient.ExecContainer(c.Request().Context(), target, shell)
+		if execErr == nil {
+			break
+		}
+	}
+
+	if execErr != nil {
+		ws.WriteMessage(websocket.TextMessage, []byte("\r\nError: Could not find a shell (/bin/bash or /bin/sh) in container.\r\n"))
+		return nil
+	}
+	defer hijacked.Close()
+
+	// Bi-directional copy
+	go func() {
+		_, _ = io.Copy(hijacked.Conn, ws.UnderlyingConn())
+	}()
+
+	_, _ = io.Copy(ws.UnderlyingConn(), hijacked.Reader)
+
+	return nil
+}
+
 func (h *DeploymentHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/deploy-final", h.HandleDeployFinal)
 	g.POST("/project/:id/action", h.HandleAction)
+	g.GET("/project/:id/terminal", h.HandleTerminal)
 }

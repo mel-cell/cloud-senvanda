@@ -16,7 +16,7 @@ import (
 
 type Service struct {
 	app              *pocketbase.PocketBase
-	dockerClient     *docker.Client
+	DockerClient     *docker.Client
 	caddyClient      *caddy.Client
 	woodpeckerClient *woodpecker.Client
 }
@@ -24,7 +24,7 @@ type Service struct {
 func NewService(app *pocketbase.PocketBase, dockerClient *docker.Client, caddyClient *caddy.Client, woodpeckerClient *woodpecker.Client) *Service {
 	return &Service{
 		app:              app,
-		dockerClient:     dockerClient,
+		DockerClient:     dockerClient,
 		caddyClient:      caddyClient,
 		woodpeckerClient: woodpeckerClient,
 	}
@@ -99,7 +99,7 @@ func (s *Service) DeployUserApp(project *models.Record, imageTag string) error {
 	project.Set("current_action", "📦 Pulling latest docker image...")
 	s.app.Dao().SaveRecord(project)
 
-	if err := s.dockerClient.PullImage(ctx, imageTag); err != nil {
+	if err := s.DockerClient.PullImage(ctx, imageTag); err != nil {
 		s.markFailed(project, fmt.Sprintf("Failed to pull image: %v", err))
 		return err
 	}
@@ -108,7 +108,7 @@ func (s *Service) DeployUserApp(project *models.Record, imageTag string) error {
 	log.Printf("♻️ Removing old container: %s", containerName)
 	project.Set("current_action", "♻️ Rotating containers...")
 	s.app.Dao().SaveRecord(project)
-	_ = s.dockerClient.RemoveContainer(ctx, containerName) // Ignore error if not exists
+	_ = s.DockerClient.RemoveContainer(ctx, containerName) // Ignore error if not exists
 
 	// C. Run New Container
 	log.Printf("▶️ Starting new container...")
@@ -157,7 +157,7 @@ func (s *Service) DeployUserApp(project *models.Record, imageTag string) error {
 		}
 	}
 
-	containerIP, err := s.dockerClient.RunContainer(ctx, containerName, imageTag, networkName, binds, cpu, memory)
+	containerIP, err := s.DockerClient.RunContainer(ctx, containerName, imageTag, networkName, binds, cpu, memory)
 	if err != nil {
 		s.markFailed(project, fmt.Sprintf("Failed to start container: %v", err))
 		return err
@@ -208,7 +208,7 @@ func (s *Service) StopProject(project *models.Record) error {
 	s.app.Dao().SaveRecord(project)
 
 	// 1. Remove Container
-	if err := s.dockerClient.RemoveContainer(ctx, containerName); err != nil {
+	if err := s.DockerClient.RemoveContainer(ctx, containerName); err != nil {
 		log.Printf("⚠️ Warning: could not remove container %s: %v", containerName, err)
 	}
 

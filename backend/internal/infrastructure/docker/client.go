@@ -128,3 +128,21 @@ func (c *Client) RunContainer(ctx context.Context, containerName string, image s
 func (c *Client) Close() error {
 	return c.cli.Close()
 }
+func (c *Client) ExecContainer(ctx context.Context, name string, cmd []string) (types.HijackedResponse, error) {
+	execConfig := container.ExecOptions{
+		AttachStdin:  true,
+		AttachStdout: true,
+		AttachStderr: true,
+		Tty:          true,
+		Cmd:          cmd,
+	}
+
+	execID, err := c.cli.ContainerExecCreate(ctx, name, execConfig)
+	if err != nil {
+		return types.HijackedResponse{}, err
+	}
+
+	return c.cli.ContainerExecAttach(ctx, execID.ID, container.ExecStartOptions{
+		Tty: true,
+	})
+}
