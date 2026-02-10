@@ -162,6 +162,12 @@ func (s *service) GetProjectsWithStatus(ctx context.Context) ([]ProjectStatus, e
 				if !cJSON.State.Running {
 					status = cJSON.State.Status
 				}
+
+				// SYNC: If we found it by name/fallback but CID was different or empty, update it
+				if cid != cJSON.ID {
+					r.Set("containerId", cJSON.ID)
+					s.app.Dao().SaveRecord(r)
+				}
 			} else {
 				status = "missing"
 			}
@@ -580,8 +586,10 @@ func (s *service) PruneMissingProjects(ctx context.Context) (int, error) {
 
 		if cid != "" {
 			exists, err = s.containers.ContainerExists(ctx, cid)
-		} else {
-			// Legacy Fallback
+		}
+		
+		// Fallback to name if not found by ID (Safety for Infrastructure/Recreated containers)
+		if !exists || cid == "" {
 			prefixed := name
 			if !strings.HasPrefix(name, "senvanda-") {
 				prefixed = "senvanda-" + name

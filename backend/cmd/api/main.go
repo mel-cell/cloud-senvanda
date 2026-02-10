@@ -8,6 +8,7 @@ import (
 
 	"github.com/labstack/echo/v5"
 	"github.com/pocketbase/pocketbase"
+	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/models"
 	"github.com/pocketbase/pocketbase/models/schema"
@@ -127,7 +128,7 @@ func main() {
 
 		// 3. Register Routes
 		// Group API Public
-		apiGroup := e.Router.Group("/api/senvanda")
+		apiGroup := e.Router.Group("/api/senvanda", apis.LoadAuthContext(app))
 
 		// Register Webhook (from Gitea)
 		webhookHandler.RegisterRoutes(apiGroup)
